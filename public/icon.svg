@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#111111"/>
+  <text
+    x="256"
+    y="338"
+    font-family="'Lato Black', 'Arial Black', 'Impact', sans-serif"
+    font-weight="900"
+    font-size="240"
+    fill="#f97316"
+    text-anchor="middle"
+    letter-spacing="-8"
+  >TFF</text>
+</svg>
