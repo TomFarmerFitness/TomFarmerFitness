@@ -128,3 +128,9 @@ export async function lookupFood(query) {
   const data = await scriptPost({ action: 'lookupFood', query });
   return data.results || [];
 }
+
+export async function upsertRow(tabName, idColumn, id, rowData) {
+  const data = await scriptPost({ action: 'upsertRow', tab: tabName, idColumn, id, row: rowData });
+  invalidateCache(tabName);
+  return data;
+}

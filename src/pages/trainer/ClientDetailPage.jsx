@@ -5,7 +5,12 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
-import { readSheet } from '../../utils/sheets';
+import { readSheet, upsertRow } from '../../utils/sheets';
+
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 function parseDate(str) {
   if (!str) return null;
@@ -166,6 +171,12 @@ export default function ClientDetailPage() {
   const [error,         setError]        = useState(null);
   const [viewingPhoto,  setViewingPhoto] = useState(null);
   const [activeSection, setActiveSection] = useState('overview'); // 'overview' | 'progress'
+  const [showPwModal,   setShowPwModal]   = useState(false);
+  const [newPassword,   setNewPassword]   = useState('');
+  const [confirmPw,     setConfirmPw]     = useState('');
+  const [pwSaving,      setPwSaving]      = useState(false);
+  const [pwError,       setPwError]       = useState('');
+  const [pwSuccess,     setPwSuccess]     = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -174,7 +185,7 @@ export default function ClientDetailPage() {
         const [clients, workoutLogs, bodyMetrics, progressPhotos] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
-          readSheet('BodyMetrics'),
+          readSheet('BodyMetrics').catch(() => []),
           readSheet('ProgressPhotos').catch(() => []),
         ]);
 
@@ -274,11 +285,74 @@ export default function ClientDetailPage() {
             {client.StartDate && <> · Started {format(new Date(client.StartDate), 'MMM d, yyyy')}</>}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-          <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dotColor, boxShadow: `0 0 6px ${dotColor}60` }} />
-          <span style={{ fontSize: '12px', color: dotColor, fontWeight: '600' }}>{compliancePct}% compliance</span>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dotColor, boxShadow: `0 0 6px ${dotColor}60` }} />
+            <span style={{ fontSize: '12px', color: dotColor, fontWeight: '600' }}>{compliancePct}% compliance</span>
+          </div>
+          <button onClick={() => { setShowPwModal(true); setNewPassword(''); setConfirmPw(''); setPwError(''); setPwSuccess(false); }}
+            style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+            🔑 Change Password
+          </button>
         </div>
       </div>
+
+      {/* ── Change Password Modal ── */}
+      {showPwModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowPwModal(false); }}>
+          <div style={{ background: '#1e293b', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '400px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <h3 style={{ color: '#f8fafc', fontSize: '16px', fontWeight: '700', margin: '0 0 6px' }}>Change Password</h3>
+            <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px' }}>Set a new password for {client.Name}</p>
+            {pwSuccess ? (
+              <div style={{ textAlign: 'center', padding: '20px 0' }}>
+                <div style={{ fontSize: '32px', marginBottom: '10px' }}>✅</div>
+                <div style={{ color: '#4ade80', fontWeight: '600' }}>Password updated successfully</div>
+                <button onClick={() => setShowPwModal(false)} style={{ marginTop: '16px', padding: '8px 20px', borderRadius: '8px', border: 'none', background: '#f97316', color: '#fff', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>Done</button>
+              </div>
+            ) : (
+              <>
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>New Password</label>
+                  <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                    placeholder="Enter new password"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#f1f5f9', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                <div style={{ marginBottom: '18px' }}>
+                  <label style={{ display: 'block', fontSize: '12px', color: '#94a3b8', marginBottom: '6px' }}>Confirm Password</label>
+                  <input type="password" value={confirmPw} onChange={e => setConfirmPw(e.target.value)}
+                    placeholder="Confirm new password"
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#f1f5f9', fontSize: '14px', boxSizing: 'border-box' }} />
+                </div>
+                {pwError && <div style={{ color: '#fca5a5', fontSize: '13px', marginBottom: '14px' }}>{pwError}</div>}
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={() => setShowPwModal(false)}
+                    style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#94a3b8', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>
+                    Cancel
+                  </button>
+                  <button disabled={pwSaving} onClick={async () => {
+                    setPwError('');
+                    if (!newPassword || newPassword.length < 6) { setPwError('Password must be at least 6 characters.'); return; }
+                    if (newPassword !== confirmPw) { setPwError('Passwords do not match.'); return; }
+                    setPwSaving(true);
+                    try {
+                      const hash = await sha256(newPassword);
+                      await upsertRow('Clients', 'ClientID', client.ClientID, { ...client, PasswordHash: hash });
+                      setPwSuccess(true);
+                    } catch (e) {
+                      setPwError('Failed to update password. Please try again.');
+                    } finally {
+                      setPwSaving(false);
+                    }
+                  }} style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', background: pwSaving ? '#7c3aed' : '#f97316', color: '#fff', fontWeight: '600', cursor: pwSaving ? 'not-allowed' : 'pointer', fontSize: '13px' }}>
+                    {pwSaving ? 'Saving…' : 'Save Password'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Section tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
