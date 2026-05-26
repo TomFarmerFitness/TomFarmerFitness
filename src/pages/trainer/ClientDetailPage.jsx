@@ -167,6 +167,7 @@ export default function ClientDetailPage() {
   const [logs,          setLogs]         = useState([]);
   const [weightEntries, setWeightEntries] = useState([]);
   const [photos,        setPhotos]       = useState([]);
+  const [macroHistory,  setMacroHistory] = useState([]);
   const [loading,       setLoading]      = useState(true);
   const [error,         setError]        = useState(null);
   const [viewingPhoto,  setViewingPhoto] = useState(null);
@@ -182,11 +183,12 @@ export default function ClientDetailPage() {
     async function load() {
       try {
         setLoading(true);
-        const [clients, workoutLogs, bodyMetrics, progressPhotos] = await Promise.all([
+        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
           readSheet('BodyMetrics').catch(() => []),
           readSheet('ProgressPhotos').catch(() => []),
+          readSheet('MacroAdjustments').catch(() => []),
         ]);
 
         const found = clients.find(c => c.ClientID === clientId);
@@ -204,6 +206,12 @@ export default function ClientDetailPage() {
             .filter(r => r.ClientID === clientId)
             .map(r => ({ metricId: r.MetricID, date: (r.Date || '').slice(0,10), weight: r.Weight, bodyFat: r.BodyFat, notes: r.Notes }))
             .filter(r => r.date && r.weight)
+        );
+
+        setMacroHistory(
+          (macroAdj || [])
+            .filter(r => r.ClientID === clientId)
+            .sort((a, b) => (b.AdjustmentDate || '').localeCompare(a.AdjustmentDate || ''))
         );
 
         setPhotos(
