@@ -5,7 +5,8 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
-import { readSheet, upsertRow } from '../../utils/sheets';
+import { readSheet, upsertRow, appendToSheet } from '../../utils/sheets';
+import config from '../../config';
 
 async function sha256(str) {
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
@@ -178,6 +179,9 @@ export default function ClientDetailPage() {
   const [pwSaving,      setPwSaving]      = useState(false);
   const [pwError,       setPwError]       = useState('');
   const [pwSuccess,     setPwSuccess]     = useState(false);
+  const [showOverride,  setShowOverride]  = useState(false);
+  const [overrideForm,  setOverrideForm]  = useState({ calories: '', protein: '', carbs: '', fats: '' });
+  const [overrideSaving, setOverrideSaving] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -594,17 +598,7 @@ export default function ClientDetailPage() {
                   };
 
                   // Write to Clients sheet via proxy
-                  const url = config.APPS_SCRIPT_URL;
-                  if (url && !url.startsWith('YOUR_')) {
-                    await fetch(url, {
-                      method:'POST', headers:{'Content-Type':'application/json'},
-                      body: JSON.stringify({
-                        action:'upsertRow', tab:'Clients',
-                        idColumn:'ClientID', id: client.ClientID,
-                        row: updatedClient,
-                      }),
-                    });
-                  }
+                  await upsertRow('Clients', 'ClientID', client.ClientID, updatedClient);
 
                   // Log the manual override to MacroAdjustments
                   await appendToSheet('MacroAdjustments', {
