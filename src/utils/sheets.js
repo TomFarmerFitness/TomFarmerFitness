@@ -94,8 +94,10 @@ export function invalidateCache(tabName) {
   try { localStorage.removeItem(cacheKey(tabName)); } catch {}
 }
 
-// ─── Write helpers ────────────────────────────────────────────────────────────
-export async function appendToSheet(tabName, rowData) {
+// ─── Apps Script POST helper ──────────────────────────────────────────────────
+// Uses fetch without Content-Type to avoid CORS preflight (Apps Script limitation).
+// Apps Script receives the JSON body in e.postData.contents regardless.
+async function scriptPost(payload) {
   const url = config.APPS_SCRIPT_URL;
   if (!url || url.startsWith('YOUR_')) {
     throw new Error(
@@ -103,16 +105,26 @@ export async function appendToSheet(tabName, rowData) {
       'VITE_APPS_SCRIPT_URL to your .env file.'
     );
   }
-  const response = await axios.post(url, { action: 'append', tab: tabName, row: rowData });
-  if (!response.data?.success) throw new Error(response.data?.error || 'Apps Script returned an error.');
+  const res = await fetch(url, {
+    method: 'POST',
+    redirect: 'follow',
+    body: JSON.stringify(payload),
+    // No Content-Type header — avoids CORS preflight for cross-origin requests
+  });
+  if (!res.ok) throw new Error(`Apps Script HTTP ${res.status}`);
+  const data = await res.json();
+  if (!data?.success) throw new Error(data?.error || 'Apps Script returned an error.');
+  return data;
+}
+
+// ─── Write helpers ────────────────────────────────────────────────────────────
+export async function appendToSheet(tabName, rowData) {
+  const data = await scriptPost({ action: 'append', tab: tabName, row: rowData });
   invalidateCache(tabName); // bust cache on write
-  return response.data;
+  return data;
 }
 
 export async function lookupFood(query) {
-  const url = config.APPS_SCRIPT_URL;
-  if (!url || url.startsWith('YOUR_')) throw new Error('apps_script_not_configured');
-  const response = await axios.post(url, { action: 'lookupFood', query });
-  if (!response.data?.success) throw new Error(response.data?.error || 'lookup_failed');
-  return response.data.results || [];
+  const data = await scriptPost({ action: 'lookupFood', query });
+  return data.results || [];
 }
