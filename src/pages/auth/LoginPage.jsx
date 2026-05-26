@@ -71,7 +71,7 @@ export default function LoginPage() {
     try {
       const result = await login(email, password);
       if (result.success) {
-        navigate(result.userType === 'trainer' ? '/trainer/dashboard' : '/client/dashboard', { replace: true });
+        navigate(result.userType === 'trainer' ? '/trainer/dashboard' : '/client/today', { replace: true });
       } else {
         setError(result.error || 'Invalid credentials.');
       }
