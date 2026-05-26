@@ -5,7 +5,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
-import { readSheet, upsertRow, appendToSheet } from '../../utils/sheets';
+import { readSheet, upsertRow, appendToSheet, deleteRow, deleteRowsWhere } from '../../utils/sheets';
 import config from '../../config';
 
 async function sha256(str) {
@@ -182,6 +182,10 @@ export default function ClientDetailPage() {
   const [showOverride,  setShowOverride]  = useState(false);
   const [overrideForm,  setOverrideForm]  = useState({ calories: '', protein: '', carbs: '', fats: '' });
   const [overrideSaving, setOverrideSaving] = useState(false);
+  const [statusSaving,  setStatusSaving]  = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting,      setDeleting]      = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -302,12 +306,90 @@ export default function ClientDetailPage() {
             <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: dotColor, boxShadow: `0 0 6px ${dotColor}60` }} />
             <span style={{ fontSize: '12px', color: dotColor, fontWeight: '600' }}>{compliancePct}% compliance</span>
           </div>
-          <button onClick={() => { setShowPwModal(true); setNewPassword(''); setConfirmPw(''); setPwError(''); setPwSuccess(false); }}
-            style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
-            🔑 Change Password
-          </button>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+            {/* Active / Inactive toggle */}
+            <button disabled={statusSaving} onClick={async () => {
+              const newStatus = client.Status === 'Active' ? 'Inactive' : 'Active';
+              setStatusSaving(true);
+              try {
+                await upsertRow('Clients', 'ClientID', client.ClientID, { ...client, Status: newStatus });
+                setClient(c => ({ ...c, Status: newStatus }));
+              } catch (e) { alert('Failed to update status: ' + e.message); }
+              finally { setStatusSaving(false); }
+            }} style={{
+              padding: '5px 12px', borderRadius: '8px', fontSize: '12px', fontWeight: '600', cursor: statusSaving ? 'not-allowed' : 'pointer', border: 'none',
+              background: client.Status === 'Active' ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)',
+              color: client.Status === 'Active' ? '#4ade80' : '#f87171',
+            }}>
+              {statusSaving ? '…' : client.Status === 'Active' ? '✓ Active — Pause' : '⏸ Inactive — Activate'}
+            </button>
+            {/* Change password */}
+            <button onClick={() => { setShowPwModal(true); setNewPassword(''); setConfirmPw(''); setPwError(''); setPwSuccess(false); }}
+              style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(249,115,22,0.3)', background: 'rgba(249,115,22,0.08)', color: '#f97316', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+              🔑 Password
+            </button>
+            {/* Delete */}
+            <button onClick={() => { setShowDeleteModal(true); setDeleteConfirmText(''); }}
+              style={{ padding: '5px 12px', borderRadius: '8px', border: '1px solid rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#f87171', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+              🗑 Delete
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* ── Delete Confirmation Modal ── */}
+      {showDeleteModal && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.8)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+          onClick={e => { if (e.target === e.currentTarget && !deleting) setShowDeleteModal(false); }}>
+          <div style={{ background: '#1e293b', borderRadius: '16px', padding: '28px', width: '100%', maxWidth: '420px', border: '1px solid rgba(239,68,68,0.2)' }}>
+            <div style={{ fontSize: '28px', textAlign: 'center', marginBottom: '12px' }}>⚠️</div>
+            <h3 style={{ color: '#f8fafc', fontSize: '16px', fontWeight: '700', margin: '0 0 8px', textAlign: 'center' }}>Delete {client.Name}?</h3>
+            <p style={{ color: '#94a3b8', fontSize: '13px', margin: '0 0 20px', textAlign: 'center', lineHeight: 1.5 }}>
+              This will permanently delete the client and <strong style={{ color: '#f87171' }}>all their data</strong> — workouts, nutrition logs, weight history, photos, and messages. This cannot be undone.
+            </p>
+            <p style={{ color: '#64748b', fontSize: '12px', margin: '0 0 8px' }}>
+              Type <strong style={{ color: '#e2e8f0' }}>{client.Name}</strong> to confirm:
+            </p>
+            <input
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              placeholder={client.Name}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.05)', color: '#f1f5f9', fontSize: '14px', boxSizing: 'border-box', marginBottom: '18px' }}
+            />
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button disabled={deleting} onClick={() => setShowDeleteModal(false)}
+                style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#94a3b8', fontWeight: '600', cursor: 'pointer', fontSize: '13px' }}>
+                Cancel
+              </button>
+              <button
+                disabled={deleting || deleteConfirmText !== client.Name}
+                onClick={async () => {
+                  setDeleting(true);
+                  try {
+                    const id = client.ClientID;
+                    await Promise.all([
+                      deleteRow('Clients', 'ClientID', id),
+                      deleteRowsWhere('WorkoutLogs',      'ClientID', id),
+                      deleteRowsWhere('ExerciseLogs',     'ClientID', id),
+                      deleteRowsWhere('NutritionLogs',    'ClientID', id),
+                      deleteRowsWhere('BodyMetrics',      'ClientID', id),
+                      deleteRowsWhere('ProgressPhotos',   'ClientID', id),
+                      deleteRowsWhere('MacroAdjustments', 'ClientID', id),
+                      deleteRowsWhere('AIQuestions',      'ClientID', id),
+                    ]);
+                    navigate('/trainer/clients');
+                  } catch (e) {
+                    alert('Delete failed: ' + e.message);
+                    setDeleting(false);
+                  }
+                }}
+                style={{ flex: 1, padding: '10px', borderRadius: '8px', border: 'none', fontSize: '13px', fontWeight: '600', cursor: deleting || deleteConfirmText !== client.Name ? 'not-allowed' : 'pointer', background: deleting || deleteConfirmText !== client.Name ? 'rgba(239,68,68,0.3)' : '#ef4444', color: '#fff' }}>
+                {deleting ? 'Deleting…' : 'Delete Everything'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Change Password Modal ── */}
       {showPwModal && (

@@ -134,3 +134,15 @@ export async function upsertRow(tabName, idColumn, id, rowData) {
   invalidateCache(tabName);
   return data;
 }
+
+export async function deleteRow(tabName, idColumn, id) {
+  const data = await scriptPost({ action: 'deleteRow', tab: tabName, idColumn, id });
+  invalidateCache(tabName);
+  return data;
+}
+
+export async function deleteRowsWhere(tabName, column, value) {
+  const data = await scriptPost({ action: 'deleteRowsWhere', tab: tabName, column, value });
+  invalidateCache(tabName);
+  return data;
+}
