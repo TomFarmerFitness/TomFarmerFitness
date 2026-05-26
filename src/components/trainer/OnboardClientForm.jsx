@@ -214,10 +214,10 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
         Injuries:            form.injuries.trim(),
         Notes:               form.notes.trim(),
         ProgramID:           form.programId,
-        Calories:            macros?.calories ?? '',
-        Protein:             macros?.protein  ?? '',
-        Carbs:               macros?.carbs    ?? '',
-        Fats:                macros?.fats     ?? '',
+        DailyCalories:       macros?.calories ?? '',
+        ProteinTarget:       macros?.protein  ?? '',
+        CarbTarget:          macros?.carbs    ?? '',
+        FatTarget:           macros?.fats     ?? '',
       };
 
       await appendToSheet('Clients', row);

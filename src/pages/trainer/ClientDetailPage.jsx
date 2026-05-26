@@ -404,15 +404,15 @@ export default function ClientDetailPage() {
             {/* Macro targets */}
             <div style={cardStyle}>
               <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 16px' }}>Daily Macro Targets</h3>
-              {client.Calories || client.TargetCalories ? (
+              {client.DailyCalories || client.TargetCalories ? (
                 <>
                   <div style={{ textAlign: 'center', marginBottom: '14px' }}>
-                    <div style={{ fontSize: '28px', fontWeight: '700', color: '#f97316' }}>{client.TargetCalories || client.Calories}</div>
+                    <div style={{ fontSize: '28px', fontWeight: '700', color: '#f97316' }}>{client.DailyCalories || client.TargetCalories}</div>
                     <div style={{ fontSize: '11px', color: '#64748b' }}>kcal / day</div>
                   </div>
-                  <MacroBar label="Protein" value={client.TargetProtein || client.Protein || 0} max={250} color="#4ade80" />
-                  <MacroBar label="Carbs"   value={client.TargetCarbs   || client.Carbs   || 0} max={400} color="#60a5fa" />
-                  <MacroBar label="Fats"    value={client.TargetFats    || client.Fats    || 0} max={120} color="#fbbf24" />
+                  <MacroBar label="Protein" value={client.ProteinTarget || client.TargetProtein || 0} max={250} color="#4ade80" />
+                  <MacroBar label="Carbs"   value={client.CarbTarget    || client.TargetCarbs   || 0} max={400} color="#60a5fa" />
+                  <MacroBar label="Fats"    value={client.FatTarget     || client.TargetFats    || 0} max={120} color="#fbbf24" />
                 </>
               ) : (
                 <div style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '20px 0' }}>No macro targets set yet.</div>
