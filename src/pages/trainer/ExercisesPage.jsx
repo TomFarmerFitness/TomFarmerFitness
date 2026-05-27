@@ -20,8 +20,10 @@ function generateExId() {
 async function callProxy(body) {
   const url = config.APPS_SCRIPT_URL;
   const res = await fetch(url, {
-    method:'POST', headers:{'Content-Type':'application/json'},
+    method: 'POST',
+    redirect: 'follow',
     body: JSON.stringify(body),
+    // No Content-Type — avoids CORS preflight for Apps Script
   });
   const data = await res.json();
   if (!data.success) throw new Error(data.error || 'Request failed');
@@ -440,8 +442,4 @@ export default function ExercisesPage() {
           ex={detailEx}
           onClose={() => setDetail(null)}
           onEdit={(ex) => { setDetail(null); setForm(ex); }}
-          onDelete={async (id) => { await handleDelete(id); setDetail(null); }} />
-      )}
-    </div>
-  );
-}
+          onDelete={async (id) => { await handleDelete(id); setDe

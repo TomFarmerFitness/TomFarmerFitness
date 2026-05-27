@@ -64,8 +64,9 @@ async function callProxy(body) {
   if (!url || url.startsWith('YOUR_')) throw new Error('apps_script_not_configured');
   const r = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    redirect: 'follow',
     body: JSON.stringify(body),
+    // No Content-Type header — avoids CORS preflight for Apps Script
   });
   const d = await r.json();
   if (!d.success) throw new Error(d.error || 'proxy_error');
@@ -315,11 +316,12 @@ function GenerateAIModal({ onClose, onGenerated }) {
     setLoading(true); setError('');
     try {
       const res = await fetch(config.APPS_SCRIPT_URL, {
-        method:'POST', headers:{'Content-Type':'application/json'},
+        method:'POST', redirect: 'follow',
         body: JSON.stringify({
           action:'generateProgram', goal, daysPerWeek, durationWeeks: duration,
           level, equipment, focusAreas: focus, notes,
         }),
+        // No Content-Type — avoids CORS preflight
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'Generation failed');
@@ -1176,8 +1178,4 @@ export default function ProgramLibraryPage() {
       {generateOpen && (
         <GenerateAIModal
           onClose={() => setGenerate(false)}
-          onGenerated={handleAIGenerated} />
-      )}
-    </div>
-  );
-}
+ 

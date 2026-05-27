@@ -1,6 +1,11 @@
 /**
  * Calculate TDEE and starting macros using the Mifflin-St Jeor formula.
  *
+ * When targetWeightKg + timeframeWeeks are supplied the calorie target is
+ * derived from the required rate of weight change (7,700 kcal ≈ 1 kg of fat),
+ * clamped to a safe range of ±1,000 kcal from TDEE.
+ * Without them, a goal-based fixed offset is used as a sensible default.
+ *
  * @param {object} stats
  * @param {number}           stats.weightKg           - Current body weight in kg
  * @param {number}           stats.heightCm           - Height in cm
@@ -8,12 +13,14 @@
  * @param {'male'|'female'}  stats.gender
  * @param {number}           stats.trainingDaysPerWeek
  * @param {string}           stats.goal               - 'Weight Loss'|'Fat Loss'|'Muscle Gain'|'General Fitness'|'Strength'
- * @returns {{ tdee: number, calories: number, protein: number, carbs: number, fats: number }}
+ * @param {number}           [stats.targetWeightKg]   - Goal weight in kg (optional)
+ * @param {number}           [stats.timeframeWeeks]   - Weeks to reach goal weight (optional)
+ * @returns {{ tdee: number, calories: number, protein: number, carbs: number, fats: number, weeklyChange: number|null }}
  */
-export function calculateMacros({ weightKg, heightCm, age, gender, trainingDaysPerWeek, goal }) {
-  const w = Number(weightKg);
-  const h = Number(heightCm);
-  const a = Number(age);
+export function calculateMacros({ weightKg, heightCm, age, gender, trainingDaysPerWeek, goal, targetWeightKg, timeframeWeeks }) {
+  const w    = Number(weightKg);
+  const h    = Number(heightCm);
+  const a    = Number(age);
   const days = Number(trainingDaysPerWeek);
 
   // 1. BMR — Mifflin-St Jeor
@@ -29,34 +36,17 @@ export function calculateMacros({ weightKg, heightCm, age, gender, trainingDaysP
 
   const tdee = Math.round(bmr * activityFactor);
 
-  // 3. Calorie target by goal
+  // 3. Calorie target
   let calories;
-  switch (goal) {
-    case 'Weight Loss':    calories = tdee - 500; break;
-    case 'Fat Loss':       calories = tdee - 400; break;
-    case 'Muscle Gain':    calories = tdee + 300; break;
-    case 'Strength':       calories = tdee + 200; break;
-    default:               calories = tdee;        // General Fitness
-  }
-  calories = Math.max(Math.round(calories), 1200); // safety floor
+  let weeklyChange = null; // kg/week implied by this deficit/surplus
 
-  // 4. Macros
-  // Protein: higher for hypertrophy/strength goals
-  const proteinPerKg = (goal === 'Muscle Gain' || goal === 'Strength') ? 2.2 : 2.0;
-  const protein = Math.round(proteinPerKg * w);
-  const fats    = Math.round((calories * 0.28) / 9);
-  const carbs   = Math.max(Math.round((calories - protein * 4 - fats * 9) / 4), 0);
+  const tw = Number(targetWeightKg);
+  const tf = Number(timeframeWeeks);
 
-  return { tdee, calories, protein, carbs, fats };
-}
+  if (targetWeightKg && tw > 0 && timeframeWeeks && tf > 0) {
+    // Precise calculation from target weight + timeframe
+    const totalWeightChange  = tw - w;                              // negative = lose, positive = gain
+    const dailyCalAdjustment = (totalWeightChange * 7700) / (tf * 7); // kcal/day above or below TDEE
+    const rawCalories        = tdee + dailyCalAdjustment;
 
-/**
- * Activity factor labels for display purposes.
- */
-export function activityLabel(trainingDaysPerWeek) {
-  const days = Number(trainingDaysPerWeek);
-  if (days <= 1) return 'Light (1 day/wk)';
-  if (days <= 3) return 'Moderate (2–3 days/wk)';
-  if (days <= 5) return 'Active (4–5 days/wk)';
-  return 'Very Active (6–7 days/wk)';
-}
+    // Safety clamp: max 1,000 kcal deficit / 800 kcal surplus 

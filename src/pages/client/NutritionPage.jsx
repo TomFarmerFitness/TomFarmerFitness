@@ -349,6 +349,220 @@ function MealSection({ mealType, items, onAddFood, onDeleteItem }) {
 }
 
 
+// ─── BarcodeScanner ──────────────────────────────────────────────────────────
+
+function BarcodeScanner({ onResult, onClose }) {
+  const videoRef  = useRef(null);
+  const streamRef = useRef(null);
+  const [status,  setStatus]  = useState('starting'); // 'starting'|'scanning'|'found'|'error'
+  const [message, setMessage] = useState('Starting camera…');
+
+  useEffect(() => {
+    let active    = true;
+    let detector  = null;
+    let intervalId = null;
+
+    async function lookupBarcode(barcode) {
+      setStatus('found');
+      setMessage('Looking up product…');
+      try {
+        const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+        const data = await res.json();
+
+        if (!data || data.status === 0 || !data.product) {
+          setStatus('error');
+          setMessage('Product not found. Try another barcode or use manual entry.');
+          return;
+        }
+
+        const p = data.product;
+        const n = p.nutriments || {};
+
+        // Prefer serving size if available, otherwise per-100g
+        const rawServing = parseFloat(p.serving_quantity) || 0;
+        const servingSize = rawServing > 0 ? rawServing : 100;
+        const scale = servingSize / 100;
+
+        const food = {
+          foodName:    p.product_name_en || p.product_name || p.abbreviated_product_name || 'Unknown Product',
+          servingSize,
+          calories: Math.round((parseFloat(n['energy-kcal_100g'] || n['energy-kcal'] || 0)) * scale),
+          protein:  Math.round((parseFloat(n['proteins_100g']    || n['proteins']    || 0)) * scale * 10) / 10,
+          carbs:    Math.round((parseFloat(n['carbohydrates_100g'] || n['carbohydrates'] || 0)) * scale * 10) / 10,
+          fats:     Math.round((parseFloat(n['fat_100g']         || n['fat']         || 0)) * scale * 10) / 10,
+          fibre:    Math.round((parseFloat(n['fiber_100g'] || n['fibers_100g'] || n['fiber'] || 0)) * scale * 10) / 10,
+        };
+
+        onResult(food);
+      } catch {
+        setStatus('error');
+        setMessage('Failed to fetch product data. Check your connection.');
+      }
+    }
+
+    async function start() {
+      try {
+        if (!('BarcodeDetector' in window)) {
+          setStatus('error');
+          setMessage('Barcode scanning requires Chrome 83+ or Safari 17+. Please update your browser or use manual entry.');
+          return;
+        }
+
+        detector = new window.BarcodeDetector({
+          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'],
+        });
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+
+        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+
+        setStatus('scanning');
+        setMessage('Align barcode in the frame');
+
+        intervalId = setInterval(async () => {
+          if (!active || !videoRef.current) return;
+          try {
+            const barcodes = await detector.detect(videoRef.current);
+            if (barcodes.length > 0) {
+              clearInterval(intervalId);
+              const barcode = barcodes[0].rawValue;
+              await lookupBarcode(barcode);
+            }
+          } catch { /* detection error — continue scanning */ }
+        }, 400);
+
+      } catch (err) {
+        if (!active) return;
+        if (err.name === 'NotAllowedError') {
+          setStatus('error');
+          setMessage('Camera access denied. Please allow camera access in your browser settings.');
+        } else if (err.name === 'NotFoundError') {
+          setStatus('error');
+          setMessage('No camera found on this device.');
+        } else {
+          setStatus('error');
+          setMessage('Could not start camera: ' + err.message);
+        }
+      }
+    }
+
+    start();
+
+    return () => {
+      active = false;
+      clearInterval(intervalId);
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+    };
+  }, [onResult]);
+
+  const isScanning = status === 'scanning';
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 300,
+      background: '#000',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+    }}>
+      {/* Close */}
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute', top: 20, right: 20,
+          width: 44, height: 44, borderRadius: '50%',
+          background: 'rgba(255,255,255,0.15)', border: 'none',
+          color: '#fff', fontSize: 22, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >✕</button>
+
+      <div style={{ color: '#fff', fontSize: 16, fontWeight: 600, marginBottom: 20, textAlign: 'center', padding: '0 24px' }}>
+        {status === 'found' ? '✓ Barcode found' : 'Scan Barcode'}
+      </div>
+
+      {/* Viewfinder */}
+      <div style={{
+        position: 'relative',
+        width: Math.min(window.innerWidth - 48, 300),
+        height: Math.min(window.innerWidth - 48, 300),
+        borderRadius: 20, overflow: 'hidden',
+        border: `2px solid ${status === 'error' ? '#ef4444' : status === 'found' ? '#22c55e' : '#22c55e'}`,
+        background: '#111',
+      }}>
+        <video
+          ref={videoRef}
+          playsInline
+          muted
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+        {/* Corner guides */}
+        {['top-left','top-right','bottom-left','bottom-right'].map(corner => {
+          const [v, h] = corner.split('-');
+          return (
+            <div key={corner} style={{
+              position: 'absolute',
+              [v]: -2, [h]: -2,
+              width: 24, height: 24,
+              borderTop:    v === 'top'    ? '4px solid #22c55e' : 'none',
+              borderBottom: v === 'bottom' ? '4px solid #22c55e' : 'none',
+              borderLeft:   h === 'left'   ? '4px solid #22c55e' : 'none',
+              borderRight:  h === 'right'  ? '4px solid #22c55e' : 'none',
+              borderRadius: corner === 'top-left' ? '4px 0 0 0' : corner === 'top-right' ? '0 4px 0 0' : corner === 'bottom-left' ? '0 0 0 4px' : '0 0 4px 0',
+            }} />
+          );
+        })}
+        {/* Scanning animation */}
+        {isScanning && (
+          <div style={{
+            position: 'absolute', left: 0, right: 0, height: 2,
+            background: 'linear-gradient(90deg, transparent, #22c55e, transparent)',
+            animation: 'scanLine 2s ease-in-out infinite',
+          }} />
+        )}
+      </div>
+
+      <div style={{
+        marginTop: 20, fontSize: 14,
+        color: status === 'error' ? '#fca5a5' : '#94a3b8',
+        textAlign: 'center', maxWidth: 280, padding: '0 16px',
+      }}>
+        {message}
+      </div>
+
+      {status === 'error' && (
+        <button
+          onClick={onClose}
+          style={{
+            marginTop: 20, padding: '12px 24px',
+            background: '#22c55e', border: 'none', borderRadius: 10,
+            color: '#000', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          }}
+        >
+          Use Manual Entry
+        </button>
+      )}
+
+      <style>{`
+        @keyframes scanLine {
+          0%   { top: 10%; }
+          50%  { top: 85%; }
+          100% { top: 10%; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
 // ─── AddFoodModal ────────────────────────────────────────────────────────────
 // Three-step flow: search → results → quantity+meal
 
@@ -385,6 +599,9 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
   const [selected,    setSelected]    = useState(null);
   const [servingG,    setServingG]    = useState(100);
   const [mealType,    setMealType]    = useState(initialMealType || 'Breakfast');
+
+  // Barcode scanner
+  const [showScanner, setShowScanner] = useState(false);
 
   // Manual entry fallback
   const [manualMode,  setManualMode]  = useState(false);
@@ -438,6 +655,11 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
     setStep('quantity');
   }
 
+  function handleBarcodeResult(food) {
+    setShowScanner(false);
+    handleSelectFood(food);
+  }
+
   function handleSave() {
     if (!selected) return;
     const scaled = scaleNutrition(selected, servingG);
@@ -482,6 +704,13 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
   };
 
   return (
+    {showScanner && (
+      <BarcodeScanner
+        onResult={handleBarcodeResult}
+        onClose={() => setShowScanner(false)}
+      />
+    )}
+
     <div
       ref={overlayRef}
       onClick={e => { if (e.target === overlayRef.current) closeWithAnimation(onClose); }}
@@ -602,6 +831,25 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
                   {searching ? '…' : 'Search'}
                 </button>
               </div>
+
+              {/* Barcode scan button */}
+              <button
+                onClick={() => setShowScanner(true)}
+                style={{
+                  width: '100%', padding: '13px',
+                  background: 'var(--surface-secondary, #1a1a1a)',
+                  border: '1px solid var(--border, #333)',
+                  borderRadius: 10, cursor: 'pointer',
+                  color: 'var(--text-primary)', fontSize: 14, fontWeight: 600,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                }}
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+                  <rect x="7" y="7" width="3" height="10" rx="1"/><rect x="14" y="7" width="3" height="10" rx="1"/>
+                </svg>
+                Scan Barcode
+              </button>
 
               {searchError && (
                 <div style={{
@@ -896,242 +1144,4 @@ function WeeklyView({ nutritionRows, targets }) {
 
 // ─── NutritionPage (main) ──────────────────────────────────────────────────
 
-export default function NutritionPage() {
-  const { user } = useAuth();
-
-  // View state
-  const [activeTab,      setActiveTab]      = useState('daily');   // 'daily' | 'weekly'
-  const [selectedDate,   setSelectedDate]   = useState(todayISO());
-
-  // Data
-  const [loading,        setLoading]        = useState(true);
-  const [error,          setError]          = useState('');
-  const [nutritionRows,  setNutritionRows]  = useState([]);  // all rows fetched
-  const [clientData,     setClientData]     = useState(null);
-
-  // Add Food modal
-  const [showAddFood,    setShowAddFood]    = useState(false);
-  const [addFoodMeal,    setAddFoodMeal]    = useState('Breakfast');
-
-  // ── Fetch data ────────────────────────────────────────────────────────────
-
-  const fetchData = useCallback(async () => {
-    if (!user?.clientID) return;
-    setLoading(true);
-    setError('');
-    try {
-      const [clients, nutrition] = await Promise.all([
-        readSheet('Clients'),
-        readSheet('NutritionLogs'),
-      ]);
-
-      const client = clients.find(c =>
-        (c.ClientID || c.Email?.toLowerCase()) === (user.clientID || user.email?.toLowerCase())
-      );
-      setClientData(client || null);
-
-      const myRows = nutrition
-        .filter(r => r.ClientID === user.clientID)
-        .map(parseNutritionRow);
-      setNutritionRows(myRows);
-    } catch (e) {
-      console.error('NutritionPage fetch error:', e);
-      setError('Could not load nutrition data.');
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  // ── Derived targets ────────────────────────────────────────────────────────
-
-  const targets = (() => {
-    if (!clientData) return { calories: 2000, protein: 150, carbs: 200, fats: 65 };
-    return {
-      calories: parseFloat(clientData.TargetCalories) || 2000,
-      protein:  parseFloat(clientData.TargetProtein)  || 150,
-      carbs:    parseFloat(clientData.TargetCarbs)    || 200,
-      fats:     parseFloat(clientData.TargetFats)     || 65,
-    };
-  })();
-
-  // ── Today's rows ──────────────────────────────────────────────────────────
-
-  const dayRows = nutritionRows.filter(r => r.date === selectedDate);
-
-  const totals = dayRows.reduce((acc, r) => ({
-    calories: acc.calories + r.calories,
-    protein:  acc.protein  + r.protein,
-    carbs:    acc.carbs    + r.carbs,
-    fats:     acc.fats     + r.fats,
-    fibre:    acc.fibre    + r.fibre,
-  }), { calories: 0, protein: 0, carbs: 0, fats: 0, fibre: 0 });
-
-  // ── Save food ──────────────────────────────────────────────────────────────
-
-  async function handleSaveFood(foodData) {
-    const logId = `NL-${Date.now()}`;
-    const row = {
-      LogID:     logId,
-      ClientID:  user.clientID,
-      Date:      selectedDate,
-      MealType:  foodData.mealType,
-      FoodName:  foodData.foodName,
-      ServingG:  foodData.servingG,
-      Calories:  foodData.calories,
-      Protein:   foodData.protein,
-      Carbs:     foodData.carbs,
-      Fats:      foodData.fats,
-      Fibre:     foodData.fibre || 0,
-      LoggedAt:  new Date().toISOString(),
-    };
-
-    // Optimistic UI update
-    setNutritionRows(prev => [...prev, parseNutritionRow(row)]);
-
-    try {
-      await appendToSheet('NutritionLogs', row);
-    } catch (e) {
-      console.error('Failed to save food log:', e);
-      // Revert optimistic update on failure
-      setNutritionRows(prev => prev.filter(r => r.logId !== logId));
-    }
-  }
-
-  // ── Delete food (optimistic) ───────────────────────────────────────────────
-  // Note: deletion via Apps Script requires implementing a 'delete' action.
-  // For now, we remove from local state only (trainer can delete from sheet if needed).
-  function handleDeleteItem(logId) {
-    setNutritionRows(prev => prev.filter(r => r.logId !== logId));
-  }
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 32, marginBottom: 12 }}>🥗</div>
-          <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Loading nutrition…</div>
-        </div>
-      </div>
-    );
-  }
-
-  const cardStyle = {
-    background: 'var(--surface, #111)',
-    borderRadius: 14, margin: '0 16px 12px',
-    border: '1px solid var(--border, #2a2a2a)',
-  };
-
-  return (
-    <div style={{ paddingBottom: 20 }}>
-
-      {/* ── Tab Bar: Daily / Weekly ── */}
-      <div style={{ display: 'flex', margin: '0 16px 4px', gap: 6 }}>
-        {[['daily','Daily'],['weekly','Weekly']].map(([val, label]) => (
-          <button key={val} onClick={() => setActiveTab(val)} style={{
-            flex: 1, padding: '9px', borderRadius: 10, border: 'none',
-            cursor: 'pointer', fontSize: 14, fontWeight: 600,
-            background: activeTab === val ? '#22c55e' : 'var(--surface, #111)',
-            color: activeTab === val ? '#000' : 'var(--text-secondary)',
-            transition: 'background 0.15s, color 0.15s',
-          }}>
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {error && (
-        <div style={{
-          margin: '8px 16px', padding: '10px 14px', borderRadius: 10,
-          background: '#1a1a1a', border: '1px solid #333',
-          fontSize: 13, color: '#fbbf24',
-        }}>
-          {error}
-        </div>
-      )}
-
-      {/* ── DAILY VIEW ── */}
-      {activeTab === 'daily' && (
-        <>
-          {/* Date selector */}
-          <DateSelector date={selectedDate} onChange={setSelectedDate} />
-
-          {/* Calorie ring */}
-          <div style={{ ...cardStyle, padding: '4px 16px 12px' }}>
-            <CalorieRing consumed={Math.round(totals.calories)} target={targets.calories} />
-
-            {/* Macro bars */}
-            <div style={{ marginTop: 4 }}>
-              <MacroBar label="Protein" consumed={totals.protein} target={targets.protein} color="#3b82f6" />
-              <MacroBar label="Carbs"   consumed={totals.carbs}   target={targets.carbs}   color="#f59e0b" />
-              <MacroBar label="Fats"    consumed={totals.fats}    target={targets.fats}    color="#f97316" />
-            </div>
-          </div>
-
-          {/* Remaining macros text */}
-          <RemainingMacros
-            protein={totals.protein} carbs={totals.carbs} fats={totals.fats}
-            targetProtein={targets.protein} targetCarbs={targets.carbs} targetFats={targets.fats}
-          />
-
-          {/* Fibre (if any logged) */}
-          {totals.fibre > 0 && (
-            <div style={{
-              ...cardStyle, padding: '10px 14px',
-              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-            }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Fibre</span>
-              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-                {Math.round(totals.fibre)}g
-              </span>
-            </div>
-          )}
-
-          {/* Meal sections */}
-          {MEAL_TYPES.map(mt => (
-            <MealSection
-              key={mt.key}
-              mealType={mt}
-              items={dayRows.filter(r => r.mealType === mt.key)}
-              onAddFood={mealKey => { setAddFoodMeal(mealKey); setShowAddFood(true); }}
-              onDeleteItem={handleDeleteItem}
-            />
-          ))}
-
-          {/* Quick add button at bottom */}
-          <div style={{ padding: '4px 16px 0' }}>
-            <button
-              onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
-              style={{
-                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-                background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              + Add Food
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* ── WEEKLY VIEW ── */}
-      {activeTab === 'weekly' && (
-        <WeeklyView nutritionRows={nutritionRows} targets={targets} />
-      )}
-
-      {/* ── AddFoodModal ── */}
-      {showAddFood && (
-        <AddFoodModal
-          initialMealType={addFoodMeal}
-          clientTargets={targets}
-          onSave={handleSaveFood}
-          onClose={() => setShowAddFood(false)}
-        />
-      )}
-    </div>
-  );
-}
-
+export default function Nutritio

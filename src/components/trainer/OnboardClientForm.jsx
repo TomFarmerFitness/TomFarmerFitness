@@ -20,6 +20,7 @@ const EMPTY = {
   gender: 'Male', age: '', goal: 'General Fitness',
   startDate: new Date().toISOString().slice(0,10),
   currentWeight: '', targetWeight: '', height: '',
+  goalTimeframe: '', // weeks to reach target weight
   trainingDaysPerWeek: '3', equipment: [],
   injuries: '', notes: '', programId: '',
 };
@@ -50,6 +51,11 @@ function MacroPreview({ macros }) {
       </div>
       <div style={{ marginTop: '8px', fontSize: '11px', color: '#475569', textAlign: 'center' }}>
         TDEE: {macros.tdee} kcal/day (maintenance)
+        {macros.weeklyChange !== null && macros.weeklyChange !== undefined && (
+          <span style={{ marginLeft: '8px', color: macros.weeklyChange < 0 ? '#4ade80' : '#f97316' }}>
+            · {macros.weeklyChange > 0 ? '+' : ''}{macros.weeklyChange} kg/week
+          </span>
+        )}
       </div>
     </div>
   );
@@ -148,16 +154,18 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
 
   // Recalculate macros when physical stats or goal change
   useEffect(() => {
-    const { currentWeight, height, age, gender, trainingDaysPerWeek, goal } = form;
+    const { currentWeight, height, age, gender, trainingDaysPerWeek, goal, targetWeight, goalTimeframe } = form;
     if (currentWeight && height && age && gender) {
       try {
         const result = calculateMacros({
-          weightKg: Number(currentWeight),
-          heightCm: Number(height),
-          age:      Number(age),
-          gender:   gender.toLowerCase(),
+          weightKg:            Number(currentWeight),
+          heightCm:            Number(height),
+          age:                 Number(age),
+          gender:              gender.toLowerCase(),
           trainingDaysPerWeek: Number(trainingDaysPerWeek),
           goal,
+          targetWeightKg:      targetWeight  ? Number(targetWeight)  : null,
+          timeframeWeeks:      goalTimeframe ? Number(goalTimeframe) : null,
         });
         setMacros(result);
       } catch {
@@ -166,7 +174,7 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
     } else {
       setMacros(null);
     }
-  }, [form.currentWeight, form.height, form.age, form.gender, form.trainingDaysPerWeek, form.goal]);
+  }, [form.currentWeight, form.height, form.age, form.gender, form.trainingDaysPerWeek, form.goal, form.targetWeight, form.goalTimeframe]);
 
   function set(key, value) {
     setForm(prev => ({ ...prev, [key]: value }));
@@ -214,6 +222,7 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
         Injuries:            form.injuries.trim(),
         Notes:               form.notes.trim(),
         ProgramID:           form.programId,
+        GoalTimeframe:       form.goalTimeframe,
         DailyCalories:       macros?.calories ?? '',
         ProteinTarget:       macros?.protein  ?? '',
         CarbTarget:          macros?.carbs    ?? '',
@@ -330,7 +339,7 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
 
           <SectionHeader>Physical Stats</SectionHeader>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div>
               <FieldLabel required>Current Weight (kg)</FieldLabel>
               <Input type="number" value={form.currentWeight} onChange={e => set('currentWeight', e.target.value)} placeholder="82" required />
@@ -343,6 +352,13 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
               <FieldLabel required>Height (cm)</FieldLabel>
               <Input type="number" value={form.height} onChange={e => set('height', e.target.value)} placeholder="175" required />
             </div>
+            <div>
+              <FieldLabel>Goal Timeframe (weeks)</FieldLabel>
+              <Input type="number" value={form.goalTimeframe} onChange={e => set('goalTimeframe', e.target.value)} placeholder="12" />
+            </div>
+          </div>
+          <div style={{ fontSize: '11px', color: '#475569', marginBottom: '12px', marginTop: '-6px' }}>
+            Enter goal timeframe to auto-calculate a personalised calorie target based on the required rate of weight change.
           </div>
 
           <SectionHeader>Training</SectionHeader>
@@ -473,30 +489,4 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
               cursor: 'pointer', transition: 'all 0.12s',
             }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = '#e2e8f0'; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#94a3b8'; }}
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            style={{
-              flex: 2, padding: '10px', borderRadius: '9px',
-              background: saving ? 'rgba(249,115,22,0.5)' : 'linear-gradient(135deg, #f97316, #ea580c)',
-              border: 'none', color: '#fff', fontSize: '13.5px', fontWeight: '600',
-              cursor: saving ? 'not-allowed' : 'pointer', transition: 'all 0.12s',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-            }}
-          >
-            {saving ? (
-              <>
-                <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                Saving...
-              </>
-            ) : 'Save Client'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+        

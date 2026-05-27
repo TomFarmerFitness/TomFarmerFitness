@@ -65,6 +65,48 @@ function getAdjustments(data, exercises) {
   return adj;
 }
 
+// ─── Injury swap helpers ──────────────────────────────────────────────────────
+const INJURY_KEYWORD_MAP = {
+  knee:          ['Legs'],
+  'lower back':  ['Back', 'Legs'],
+  back:          ['Back'],
+  shoulder:      ['Shoulders', 'Chest'],
+  elbow:         ['Arms'],
+  wrist:         ['Arms', 'Chest', 'Shoulders'],
+  hip:           ['Glutes', 'Legs'],
+  ankle:         ['Legs'],
+  neck:          ['Back', 'Shoulders'],
+  hamstring:     ['Legs'],
+  quad:          ['Legs'],
+  calf:          ['Legs'],
+  groin:         ['Legs', 'Glutes'],
+  pec:           ['Chest'],
+  trap:          ['Back', 'Shoulders'],
+  rotator:       ['Shoulders'],
+};
+
+function swapInjuredExercises(exercises, injuryNotes, allExercises) {
+  const lower = injuryNotes.toLowerCase();
+  const affected = new Set();
+  Object.entries(INJURY_KEYWORD_MAP).forEach(([kw, groups]) => {
+    if (lower.includes(kw)) groups.forEach(g => affected.add(g));
+  });
+  if (affected.size === 0) return exercises;
+
+  return exercises.map(ex => {
+    const mg = (ex.muscleGroup || '').trim();
+    if (!affected.has(mg)) return ex;
+    // Prefer Machine > Cable > Bodyweight as safer alternatives
+    const alt = allExercises.find(ae =>
+      (ae.MuscleGroup || '') === mg &&
+      ['Machine', 'Cable', 'Bodyweight'].includes(ae.Equipment || '') &&
+      (ae.Name || '').toLowerCase() !== (ex.name || '').toLowerCase()
+    );
+    if (alt) return { ...ex, name: alt.Name, originalName: ex.name, swappedForInjury: true };
+    return { ...ex, flaggedForInjury: true };
+  });
+}
+
 function computeWeekStats(workoutLogs, weekDays) {
   const weekDates = new Set(weekDays.map(d => d.date));
   const weekLogs  = workoutLogs.filter(l => weekDates.has((l.Date||'').slice(0,10)) && l.Status==='Completed');
@@ -203,126 +245,512 @@ function WeekStrip({ weekDays, selectedDate, sessions, workoutLogs, daysPerWeek,
   );
 }
 
-// ─── Pre-Workout Form (full-screen sub-view) ──────────────────────────────────
-function PreWorkoutForm({ session, onSubmit, onCancel }) {
-  const [energy,    setEnergy]    = useState(7);
-  const [sleep,     setSleep]     = useState(7);
-  const [hasInjury, setHasInjury] = useState(false);
-  const [injuryNotes,setInjuryNotes]=useState('');
-  const [soreMuscles,setSoreMuscles]=useState(['None']);
-  const [sorenessLevel,setSorenessLevel]=useState(5);
-  const [feeling,   setFeeling]   = useState('Good');
-  const [submitting,setSubmitting]=useState(false);
+// ─── Pre-Workout Chat (conversational coach check-in) ─────────────────────────
+function PreWorkoutChat({ session, onSubmit, onCancel }) {
+  const [messages,    setMessages]    = useState([]);
+  const [step,        setStep]        = useState('waiting');
+  const [typing,      setTyping]      = useState(false);
+  const [energy,      setEnergy]      = useState(null);
+  const [sleep,       setSleep]       = useState(null);
+  const [soreness,    setSoreness]    = useState(['None']);
+  const [injuryInput, setInjuryInput] = useState('');
+  const [injuryDesc,  setInjuryDesc]  = useState('');
+  const [hasInjury,   setHasInjury]   = useState(null);
+  const scrollRef = useRef(null);
 
-  const hasSoreness = !soreMuscles.includes('None') && soreMuscles.length > 0;
+  // Auto-scroll to latest message
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [messages, typing]);
 
-  const handleSubmit = () => {
-    setSubmitting(true);
-    onSubmit({ energyLevel:energy, sleepQuality:sleep, hasInjury,
-      injuryNotes, soreMuscles, sorenessLevel: hasSoreness ? sorenessLevel : 0,
-      feeling });
+  const addCoach = useCallback((text, nextStep, delay = 650) => {
+    setTyping(true);
+    setTimeout(() => {
+      setTyping(false);
+      setMessages(prev => [...prev, { role: 'coach', text, id: Date.now() + Math.random() }]);
+      setStep(nextStep);
+    }, delay);
+  }, []);
+
+  const addUser = (text) =>
+    setMessages(prev => [...prev, { role: 'user', text, id: Date.now() + Math.random() }]);
+
+  // Initial greeting
+  useEffect(() => {
+    const name = session?.SessionName || 'today\'s session';
+    addCoach(
+      `Hey! 👋 Ready to crush ${name}? Quick check-in before we start — just a few questions. First up: how's your energy feeling right now?`,
+      'energy', 700
+    );
+  }, []); // eslint-disable-line
+
+  const handleEnergy = (val, label) => {
+    setEnergy(val);
+    addUser(label);
+    setStep('waiting');
+    const msg = val >= 4
+      ? 'Love the energy! 💪 And how did you sleep last night?'
+      : val === 3
+        ? 'We can work with that! How did you sleep last night? 😴'
+        : 'You showed up — that\'s the hardest part. 🙌 How\'s the sleep been?';
+    addCoach(msg, 'sleep');
+  };
+
+  const handleSleep = (val, label) => {
+    setSleep(val);
+    addUser(label);
+    setStep('waiting');
+    const msg = val >= 4
+      ? 'Well rested — great sign. Any muscles feeling tight or sore going in today? 🔥'
+      : val === 3
+        ? 'Not bad. Any muscles particularly sore right now?'
+        : 'Rough night — we\'ll be smart with the intensity. Any muscles particularly sore today?';
+    addCoach(msg, 'soreness');
+  };
+
+  const handleSorenessSubmit = () => {
+    const text = soreness.includes('None') ? 'No soreness, feeling fresh! 💚' : `Sore: ${soreness.join(', ')}`;
+    addUser(text);
+    setStep('waiting');
+    addCoach(
+      'Got it. Last one — any pain or niggles right now? Anything that\'s been bothering you that I should know about before we start? ⚠️',
+      'injury'
+    );
+  };
+
+  const handleInjury = (val) => {
+    setHasInjury(val);
+    addUser(val ? 'Yes, I have something ⚠️' : 'No, feeling good! ✅');
+    setStep('waiting');
+    if (val) {
+      addCoach(
+        'Thanks for the heads up. Tell me about it — where is it and what does the pain feel like? The more detail the better so I can adapt the session.',
+        'injuryDesc'
+      );
+    } else {
+      buildSummary(false, '');
+    }
+  };
+
+  const handleInjurySubmit = () => {
+    const desc = injuryInput.trim();
+    if (!desc) return;
+    setInjuryDesc(desc);
+    addUser(desc);
+    setInjuryInput('');
+    setStep('waiting');
+    buildSummary(true, desc);
+  };
+
+  const buildSummary = (injured, injNotes) => {
+    const energyVal = energy || 3;
+    const sleepVal  = sleep  || 3;
+    const lowEnergy = energyVal <= 2;
+    const badSleep  = sleepVal  <= 2;
+    const hasSore   = !soreness.includes('None') && soreness.length > 0;
+
+    let msg = '';
+    if (lowEnergy || badSleep) {
+      msg = 'Alright — today we\'ll keep it smart. I\'ve taken a set or two off the session so you can finish strong without burning out.';
+    } else {
+      msg = 'Everything\'s looking solid on my end! You\'re primed for a strong session today.';
+    }
+    if (hasSore) {
+      const soreList = soreness.filter(s => s !== 'None');
+      msg += ` I\'ll keep an eye on ${soreList.join(' and ')} and flag any exercises hitting those muscles.`;
+    }
+    if (injured && injNotes) {
+      const snippet = injNotes.split(' ').slice(0, 6).join(' ');
+      msg += ` I\'ve flagged "${snippet}…" for Tom to review, and I\'ve swapped out any exercises that might aggravate it.`;
+    }
+    msg += ' Let\'s get after it! 🔥';
+
+    addCoach(msg, 'summary', 900);
+  };
+
+  // Soreness chip toggle
+  const toggleSoreness = (muscle) => {
+    if (muscle === 'None') { setSoreness(['None']); return; }
+    setSoreness(prev => {
+      const without = prev.filter(x => x !== 'None');
+      return without.includes(muscle)
+        ? (without.filter(x => x !== muscle).length ? without.filter(x => x !== muscle) : ['None'])
+        : [...without, muscle];
+    });
+  };
+
+  // ── Render input controls by step ──
+  const renderInput = () => {
+    if (typing || step === 'waiting') return null;
+
+    const emojiScaleBtn = (o, onClick) => (
+      <button key={o.val} onClick={() => onClick(o.val, `${o.emoji} ${o.label}`)} style={{
+        flex: 1, padding: '11px 4px',
+        background: '#1e293b', border: '1px solid rgba(255,255,255,0.08)',
+        borderRadius: '12px', color: '#f8fafc', cursor: 'pointer',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '5px',
+        transition: 'border-color 0.12s',
+      }}
+        onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(249,115,22,0.5)'; }}
+        onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
+      >
+        <span style={{ fontSize: '22px' }}>{o.emoji}</span>
+        <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '600', textAlign: 'center', lineHeight: 1.2 }}>{o.label}</span>
+      </button>
+    );
+
+    if (step === 'energy') {
+      return (
+        <div style={{ display: 'flex', gap: '7px' }}>
+          {[
+            { val: 1, emoji: '😴', label: 'Very low' },
+            { val: 2, emoji: '😑', label: 'Low' },
+            { val: 3, emoji: '😐', label: 'Okay' },
+            { val: 4, emoji: '💪', label: 'Good' },
+            { val: 5, emoji: '⚡', label: 'Great' },
+          ].map(o => emojiScaleBtn(o, handleEnergy))}
+        </div>
+      );
+    }
+
+    if (step === 'sleep') {
+      return (
+        <div style={{ display: 'flex', gap: '7px' }}>
+          {[
+            { val: 1, emoji: '😵', label: 'Terrible' },
+            { val: 2, emoji: '😫', label: 'Poor' },
+            { val: 3, emoji: '😐', label: 'Okay' },
+            { val: 4, emoji: '😊', label: 'Good' },
+            { val: 5, emoji: '🌟', label: 'Great' },
+          ].map(o => emojiScaleBtn(o, handleSleep))}
+        </div>
+      );
+    }
+
+    if (step === 'soreness') {
+      return (
+        <div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', marginBottom: '10px' }}>
+            {SORE_MUSCLES.map(m => {
+              const sel = soreness.includes(m);
+              return (
+                <button key={m} onClick={() => toggleSoreness(m)} style={{
+                  padding: '7px 13px', borderRadius: '20px', fontSize: '12px', fontWeight: '600',
+                  border: sel ? '1.5px solid #f97316' : '1.5px solid rgba(255,255,255,0.1)',
+                  background: sel ? 'rgba(249,115,22,0.15)' : 'transparent',
+                  color: sel ? '#f97316' : '#64748b', cursor: 'pointer', transition: 'all 0.12s',
+                }}>{m}</button>
+              );
+            })}
+          </div>
+          <button onClick={handleSorenessSubmit} style={{
+            width: '100%', padding: '12px', background: '#f97316', border: 'none',
+            borderRadius: '11px', color: '#fff', fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+          }}>Done ✓</button>
+        </div>
+      );
+    }
+
+    if (step === 'injury') {
+      return (
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {[
+            { label: 'No, all good! ✅', val: false, color: '#22c55e', bg: 'rgba(34,197,94,0.1)', border: 'rgba(34,197,94,0.3)' },
+            { label: 'Yes, I do ⚠️',     val: true,  color: '#f97316', bg: 'rgba(249,115,22,0.1)', border: 'rgba(249,115,22,0.3)' },
+          ].map(o => (
+            <button key={String(o.val)} onClick={() => handleInjury(o.val)} style={{
+              flex: 1, padding: '13px', background: o.bg,
+              border: `1.5px solid ${o.border}`, borderRadius: '12px',
+              color: o.color, fontSize: '13px', fontWeight: '700', cursor: 'pointer',
+            }}>{o.label}</button>
+          ))}
+        </div>
+      );
+    }
+
+    if (step === 'injuryDesc') {
+      return (
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            value={injuryInput}
+            onChange={e => setInjuryInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleInjurySubmit(); }}
+            placeholder="e.g. Left knee — sharp pain on the way down stairs…"
+            style={{
+              flex: 1, padding: '12px 14px', background: '#1e293b',
+              border: '1.5px solid rgba(249,115,22,0.4)', borderRadius: '12px',
+              color: '#f8fafc', fontSize: '14px', outline: 'none',
+              fontFamily: "'Inter', system-ui, sans-serif",
+            }}
+            autoFocus
+          />
+          <button onClick={handleInjurySubmit} style={{
+            padding: '12px 16px', background: '#f97316', border: 'none',
+            borderRadius: '12px', color: '#fff', fontSize: '16px', fontWeight: '700', cursor: 'pointer',
+          }}>→</button>
+        </div>
+      );
+    }
+
+    if (step === 'summary') {
+      return (
+        <button onClick={() => onSubmit({
+          energyLevel:  energy || 3,
+          sleepQuality: sleep  || 3,
+          hasInjury:    !!hasInjury,
+          injuryNotes:  injuryDesc,
+          soreMuscles:  soreness.includes('None') ? ['None'] : soreness,
+          sorenessLevel: soreness.includes('None') ? 0 : 7,
+          feeling: (energy || 3) >= 4 ? 'Good' : (energy || 3) >= 3 ? 'Average' : 'Not great',
+        })} style={{
+          width: '100%', padding: '15px', background: '#f97316', border: 'none',
+          borderRadius: '13px', color: '#fff', fontSize: '15px', fontWeight: '800', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+          boxShadow: '0 6px 20px rgba(249,115,22,0.4)',
+        }}>
+          <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+            <polygon points="5 3 19 12 5 21 5 3"/>
+          </svg>
+          Let's Go! Start Workout
+        </button>
+      );
+    }
+    return null;
   };
 
   return (
-    <div style={{padding:'20px 16px 100px',fontFamily:"'Inter', system-ui, sans-serif",color:'#f8fafc'}}>
-      <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'24px'}}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', fontFamily: "'Inter', system-ui, sans-serif", background: '#0f172a', color: '#f8fafc' }}>
+      {/* Header */}
+      <div style={{ padding: '16px 16px 12px', display: 'flex', alignItems: 'center', gap: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)', flexShrink: 0 }}>
         <button onClick={onCancel} style={{
-          background:'rgba(255,255,255,0.06)',border:'none',borderRadius:'8px',
-          color:'#94a3b8',fontSize:'13px',fontWeight:'600',padding:'8px 12px',cursor:'pointer',
+          background: 'rgba(255,255,255,0.06)', border: 'none', borderRadius: '8px',
+          color: '#94a3b8', fontSize: '13px', fontWeight: '600', padding: '8px 12px', cursor: 'pointer',
         }}>← Back</button>
         <div>
-          <div style={{fontSize:'11px',color:'#475569',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px'}}>Pre-Workout</div>
-          <div style={{fontSize:'18px',fontWeight:'800'}}>{session?.SessionName || 'Check-In'}</div>
+          <div style={{ fontSize: '10px', color: '#f97316', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '1px' }}>Pre-Workout</div>
+          <div style={{ fontSize: '17px', fontWeight: '800' }}>{session?.SessionName || 'Check-In'}</div>
         </div>
+        <div style={{ marginLeft: 'auto', width: '36px', height: '36px', borderRadius: '50%', background: 'rgba(249,115,22,0.15)', border: '2px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>🏋️</div>
       </div>
 
-      {/* Energy */}
-      <div style={{background:'#1e293b',borderRadius:'14px',padding:'16px 18px',marginBottom:'10px',border:'1px solid rgba(255,255,255,0.06)'}}>
-        <SliderInput label="⚡ Energy level today" value={energy} onChange={setEnergy} />
-        <SliderInput label="😴 Sleep quality last night" value={sleep} onChange={setSleep} />
-      </div>
+      {/* Chat area */}
+      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        <style>{`
+          @keyframes fadeUp { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+          @keyframes dotBounce { 0%,80%,100% { transform:translateY(0); } 40% { transform:translateY(-6px); } }
+        `}</style>
 
-      {/* Injury */}
-      <div style={{background:'#1e293b',borderRadius:'14px',padding:'16px 18px',marginBottom:'10px',border:'1px solid rgba(255,255,255,0.06)'}}>
-        <div style={{fontSize:'13px',fontWeight:'700',color:'#f8fafc',marginBottom:'12px'}}>Any pain or injury today?</div>
-        <div style={{display:'flex',gap:'8px',marginBottom: hasInjury ? '12px' : '0'}}>
-          {['No','Yes'].map(opt => (
-            <button key={opt} onClick={()=>setHasInjury(opt==='Yes')} style={{
-              flex:1,padding:'10px',borderRadius:'10px',fontSize:'13px',fontWeight:'700',
-              border: (hasInjury ? opt==='Yes' : opt==='No')
-                ? '1.5px solid #f97316'
-                : '1.5px solid rgba(255,255,255,0.08)',
-              background: (hasInjury ? opt==='Yes' : opt==='No')
-                ? 'rgba(249,115,22,0.12)' : 'transparent',
-              color: (hasInjury ? opt==='Yes' : opt==='No') ? '#f97316' : '#64748b',
-              cursor:'pointer',
-            }}>{opt}</button>
-          ))}
-        </div>
-        {hasInjury && (
-          <textarea
-            placeholder="Describe the pain or injury..."
-            value={injuryNotes}
-            onChange={e=>setInjuryNotes(e.target.value)}
-            rows={3}
-            style={{
-              width:'100%',padding:'11px 13px',background:'#0f172a',
-              border:'1px solid rgba(249,115,22,0.3)',borderRadius:'10px',
-              color:'#f8fafc',fontSize:'14px',outline:'none',resize:'none',
-              fontFamily:"'Inter', system-ui, sans-serif",lineHeight:1.5,
-            }}
-          />
-        )}
-      </div>
-
-      {/* Sore muscles */}
-      <div style={{background:'#1e293b',borderRadius:'14px',padding:'16px 18px',marginBottom:'10px',border:'1px solid rgba(255,255,255,0.06)'}}>
-        <div style={{fontSize:'13px',fontWeight:'700',color:'#f8fafc',marginBottom:'10px'}}>Sore muscles right now</div>
-        <PillToggle options={SORE_MUSCLES} selected={soreMuscles} multi onChange={setSoreMuscles} />
-        {hasSoreness && (
-          <div style={{marginTop:'16px'}}>
-            <SliderInput label="Soreness level" value={sorenessLevel} onChange={setSorenessLevel} />
-            {sorenessLevel >= 8 && (
-              <div style={{
-                background:'rgba(249,115,22,0.1)',border:'1px solid rgba(249,115,22,0.2)',
-                borderRadius:'8px',padding:'10px 12px',
-                fontSize:'12px',color:'#fbbf24',lineHeight:1.5,
-              }}>
-                ⚠️ High soreness noted. We will flag if today's workout targets these muscles.
-              </div>
+        {messages.map(msg => (
+          <div key={msg.id} style={{
+            display: 'flex', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+            alignItems: 'flex-end', gap: '8px',
+            animation: 'fadeUp 0.25s ease',
+          }}>
+            {msg.role === 'coach' && (
+              <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(249,115,22,0.2)', border: '1.5px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0 }}>T</div>
             )}
+            <div style={{
+              maxWidth: '78%', padding: '11px 14px', borderRadius: msg.role === 'user' ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
+              background: msg.role === 'user' ? '#f97316' : '#1e293b',
+              border: msg.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.08)',
+              fontSize: '14px', lineHeight: 1.55, color: '#f8fafc',
+            }}>{msg.text}</div>
+          </div>
+        ))}
+
+        {/* Typing indicator */}
+        {typing && (
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px', animation: 'fadeUp 0.2s ease' }}>
+            <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: 'rgba(249,115,22,0.2)', border: '1.5px solid rgba(249,115,22,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px' }}>T</div>
+            <div style={{ padding: '12px 16px', background: '#1e293b', borderRadius: '18px 18px 18px 4px', border: '1px solid rgba(255,255,255,0.08)', display: 'flex', gap: '4px', alignItems: 'center' }}>
+              {[0, 1, 2].map(i => (
+                <span key={i} style={{ width: '7px', height: '7px', borderRadius: '50%', background: '#475569', display: 'inline-block', animation: `dotBounce 1.2s ease-in-out ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Overall feeling */}
-      <div style={{background:'#1e293b',borderRadius:'14px',padding:'16px 18px',marginBottom:'16px',border:'1px solid rgba(255,255,255,0.06)'}}>
-        <div style={{fontSize:'13px',fontWeight:'700',color:'#f8fafc',marginBottom:'10px'}}>How are you feeling going into this session?</div>
-        <PillToggle options={FEELINGS} selected={feeling} onChange={setFeeling} />
+      {/* Input area */}
+      <div style={{ padding: '12px 16px 28px', borderTop: '1px solid rgba(255,255,255,0.06)', flexShrink: 0, minHeight: '80px', display: 'flex', alignItems: 'center' }}>
+        <div style={{ width: '100%' }}>
+          {renderInput()}
+        </div>
       </div>
+    </div>
+  );
+}
 
-      <button onClick={handleSubmit} disabled={submitting} style={{
-        width:'100%',padding:'15px',
-        background: submitting ? 'rgba(249,115,22,0.4)' : '#f97316',
-        border:'none',borderRadius:'13px',color:'#fff',
-        fontSize:'15px',fontWeight:'800',cursor: submitting ? 'not-allowed' : 'pointer',
-        display:'flex',alignItems:'center',justifyContent:'center',gap:'8px',
-      }}>
-        {submitting ? 'Processing…' : (
+// ─── Niggle modal (in-workout injury report) ──────────────────────────────────
+const NIGGLE_MUSCLE_MAP = {
+  Knee:     ['Legs'],
+  Shoulder: ['Shoulders', 'Chest'],
+  Back:     ['Back'],
+  Hip:      ['Glutes', 'Legs'],
+  Elbow:    ['Arms'],
+  Wrist:    ['Arms', 'Chest', 'Shoulders'],
+  Ankle:    ['Legs'],
+  Neck:     ['Back', 'Shoulders'],
+};
+
+function NiggleModal({ exercises, onFlag, onClose }) {
+  const [nigStep,    setNigStep]    = useState('where');
+  const [bodyPart,   setBodyPart]   = useState('');
+  const [customTxt,  setCustomTxt]  = useState('');
+  const [flaggedExs, setFlaggedExs] = useState([]);
+
+  const PARTS = ['Knee','Shoulder','Back','Hip','Elbow','Wrist','Ankle','Neck'];
+
+  const pickPart = (part) => {
+    setBodyPart(part);
+    const groups = NIGGLE_MUSCLE_MAP[part] || [];
+    setFlaggedExs(groups.length > 0 ? exercises.filter(ex => groups.includes(ex.muscleGroup)) : []);
+    setNigStep('severity');
+  };
+
+  const handleCustom = () => {
+    const p = customTxt.trim();
+    if (!p) return;
+    setBodyPart(p);
+    setFlaggedExs([]);
+    setNigStep('severity');
+  };
+
+  const handleSeverity = (sev) => {
+    onFlag(bodyPart, sev, flaggedExs);
+    setNigStep('done');
+  };
+
+  const overlayStyle = {
+    position: 'fixed', inset: 0, zIndex: 200,
+    background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(3px)',
+    display: 'flex', alignItems: 'flex-end',
+  };
+  const panelStyle = {
+    width: '100%', maxWidth: '430px', margin: '0 auto',
+    background: '#1e293b', borderRadius: '20px 20px 0 0',
+    padding: '20px 18px 36px',
+    border: '1px solid rgba(255,255,255,0.1)',
+    animation: 'slideUp 0.25s ease',
+  };
+
+  return (
+    <div style={overlayStyle} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <style>{`@keyframes slideUp { from { transform:translateY(60px); opacity:0; } to { transform:translateY(0); opacity:1; } }`}</style>
+      <div style={panelStyle}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+          <div>
+            <div style={{ fontSize: '16px', fontWeight: '800', color: '#f8fafc' }}>🤕 Report a Niggle</div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>Let's adapt the session for you</div>
+          </div>
+          <button onClick={onClose} style={{
+            background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: '8px',
+            color: '#94a3b8', width: '32px', height: '32px', cursor: 'pointer', fontSize: '16px',
+          }}>✕</button>
+        </div>
+
+        {nigStep === 'where' && (
           <>
-            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
-              <polygon points="5 3 19 12 5 21 5 3"/>
-            </svg>
-            Start Workout
+            <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '12px' }}>Where's the issue?</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '14px' }}>
+              {PARTS.map(p => (
+                <button key={p} onClick={() => pickPart(p)} style={{
+                  padding: '8px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '700',
+                  background: 'rgba(255,255,255,0.06)', border: '1.5px solid rgba(255,255,255,0.1)',
+                  color: '#cbd5e1', cursor: 'pointer', transition: 'all 0.12s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#f97316'; e.currentTarget.style.color = '#f97316'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#cbd5e1'; }}
+                >{p}</button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                value={customTxt}
+                onChange={e => setCustomTxt(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleCustom(); }}
+                placeholder="Other — e.g. shin, forearm, groin…"
+                style={{
+                  flex: 1, padding: '11px 13px', background: '#0f172a',
+                  border: '1px solid rgba(255,255,255,0.09)', borderRadius: '10px',
+                  color: '#f8fafc', fontSize: '13px', outline: 'none',
+                }}
+              />
+              <button onClick={handleCustom} style={{
+                padding: '11px 14px', background: '#f97316', border: 'none', borderRadius: '10px',
+                color: '#fff', fontSize: '15px', fontWeight: '700', cursor: 'pointer',
+              }}>→</button>
+            </div>
           </>
         )}
-      </button>
+
+        {nigStep === 'severity' && (
+          <>
+            <p style={{ fontSize: '13px', color: '#94a3b8', marginBottom: '14px' }}>
+              How bad is the <strong style={{ color: '#f97316' }}>{bodyPart}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+              {[
+                { val: 1, emoji: '😐', label: 'Mild' },
+                { val: 2, emoji: '😕', label: 'Aching' },
+                { val: 3, emoji: '😣', label: 'Sore' },
+                { val: 4, emoji: '😖', label: 'Sharp' },
+                { val: 5, emoji: '😡', label: 'Severe' },
+              ].map(s => (
+                <button key={s.val} onClick={() => handleSeverity(s.val)} style={{
+                  flex: 1, padding: '11px 4px',
+                  background: '#0f172a', border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '12px', color: '#f8fafc', cursor: 'pointer',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                  transition: 'border-color 0.12s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(249,115,22,0.5)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; }}
+                >
+                  <span style={{ fontSize: '20px' }}>{s.emoji}</span>
+                  <span style={{ fontSize: '9px', color: '#64748b', fontWeight: '600' }}>{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {nigStep === 'done' && (
+          <>
+            <div style={{
+              background: flaggedExs.length > 0 ? 'rgba(251,191,36,0.08)' : 'rgba(34,197,94,0.08)',
+              border: `1px solid ${flaggedExs.length > 0 ? 'rgba(251,191,36,0.25)' : 'rgba(34,197,94,0.25)'}`,
+              borderRadius: '12px', padding: '14px 16px', marginBottom: '14px',
+            }}>
+              {flaggedExs.length > 0 ? (
+                <>
+                  <div style={{ fontSize: '13px', fontWeight: '700', color: '#fbbf24', marginBottom: '6px' }}>
+                    ⚠️ Flagged {flaggedExs.length} exercise{flaggedExs.length > 1 ? 's' : ''}
+                  </div>
+                  <div style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                    {flaggedExs.map(e => e.name).join(', ')} — these may aggravate your {bodyPart}. Consider modifying load or skipping.
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: '13px', color: '#86efac' }}>
+                  ✓ Logged. Tom will be able to see this. If it gets worse, stop the session and let your coach know directly.
+                </div>
+              )}
+            </div>
+            <button onClick={onClose} style={{
+              width: '100%', padding: '13px', background: '#f97316', border: 'none',
+              borderRadius: '12px', color: '#fff', fontSize: '14px', fontWeight: '700', cursor: 'pointer',
+            }}>Got it — back to workout 💪</button>
+          </>
+        )}
+      </div>
     </div>
   );
 }
 
 // ─── Exercise card (used in ActiveWorkout) ────────────────────────────────────
-function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, compact=false }) {
+function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false }) {
   const allDone = sets.every(s=>s.done);
   const doneSets = sets.filter(s=>s.done).length;
   const borderColor = isFlagged ? 'rgba(251,191,36,0.35)' : allDone ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)';
@@ -360,9 +788,19 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, com
       </div>
 
       {/* Warnings */}
-      {isFlagged && (
+      {exercise.swappedForInjury && (
+        <div style={{background:'rgba(139,92,246,0.1)',border:'1px solid rgba(139,92,246,0.25)',borderRadius:'7px',padding:'8px 10px',fontSize:'12px',color:'#c4b5fd',marginBottom:'10px'}}>
+          🔄 Swapped from <em>{exercise.originalName}</em> to protect your injury — safer alternative selected
+        </div>
+      )}
+      {isFlagged && !exercise.swappedForInjury && (
         <div style={{background:'rgba(251,191,36,0.1)',border:'1px solid rgba(251,191,36,0.25)',borderRadius:'7px',padding:'8px 10px',fontSize:'12px',color:'#fbbf24',marginBottom:'10px'}}>
-          ⚠️ Injury flagged — consider skipping or modifying this exercise
+          ⚠️ Injury flagged — consider skipping or reducing load on this exercise
+        </div>
+      )}
+      {niggleFlag && (
+        <div style={{background:'rgba(239,68,68,0.08)',border:'1px solid rgba(239,68,68,0.25)',borderRadius:'7px',padding:'8px 10px',fontSize:'12px',color:'#fca5a5',marginBottom:'10px'}}>
+          🤕 In-workout niggle reported — modify load or skip if pain increases
         </div>
       )}
       {soreWarning && (
@@ -432,11 +870,13 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, com
 
 // ─── Active Workout view ──────────────────────────────────────────────────────
 function ActiveWorkout({ session, exercises, sets, adjustments, preData,
-  onUpdateSet, onAddExercise, onComplete, onCancel, saving }) {
+  onUpdateSet, onAddExercise, onComplete, onCancel, onNiggleLog, saving }) {
 
   const [showAddEx,   setShowAddEx]  = useState(false);
   const [newEx,       setNewEx]      = useState({name:'',sets:'3',reps:'10',weight:'',muscleGroup:''});
   const [confirmDone, setConfirmDone]= useState(false);
+  const [showNiggle,  setShowNiggle] = useState(false);
+  const [niggleFlags, setNiggleFlags]= useState({}); // exerciseName → true
 
   const totalSetsPlanned = exercises.reduce((n,ex)=>(sets[ex.name]||[]).length+n, 0);
   const totalSetsDone    = Object.values(sets).flat().filter(s=>s.done).length;
@@ -480,16 +920,23 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
       </div>
 
       {/* Adjustment banners */}
-      {adjustments.map((adj,i) => (
-        <div key={i} style={{
-          padding:'12px 14px',borderRadius:'10px',marginBottom:'10px',fontSize:'13px',lineHeight:1.45,
-          background: adj.type==='recovery' ? 'rgba(59,130,246,0.1)' : adj.type==='injury' ? 'rgba(251,191,36,0.1)' : 'rgba(249,115,22,0.1)',
-          border: adj.type==='recovery' ? '1px solid rgba(59,130,246,0.25)' : adj.type==='injury' ? '1px solid rgba(251,191,36,0.25)' : '1px solid rgba(249,115,22,0.2)',
-          color: adj.type==='recovery' ? '#93c5fd' : adj.type==='injury' ? '#fbbf24' : '#fdba74',
-        }}>
-          {adj.type==='recovery' ? '💙' : adj.type==='injury' ? '⚠️' : '🔥'} {adj.msg}
-        </div>
-      ))}
+      {adjustments.map((adj,i) => {
+        const styles = {
+          recovery: { bg:'rgba(59,130,246,0.1)',  border:'rgba(59,130,246,0.25)',  color:'#93c5fd',  icon:'💙' },
+          injury:   { bg:'rgba(251,191,36,0.1)',  border:'rgba(251,191,36,0.25)',  color:'#fbbf24',  icon:'⚠️' },
+          swap:     { bg:'rgba(139,92,246,0.1)',   border:'rgba(139,92,246,0.25)',  color:'#c4b5fd',  icon:'🔄' },
+          soreness: { bg:'rgba(249,115,22,0.1)',  border:'rgba(249,115,22,0.2)',   color:'#fdba74',  icon:'🔥' },
+        };
+        const s = styles[adj.type] || styles.soreness;
+        return (
+          <div key={i} style={{
+            padding:'12px 14px',borderRadius:'10px',marginBottom:'10px',fontSize:'13px',lineHeight:1.45,
+            background:s.bg, border:`1px solid ${s.border}`, color:s.color,
+          }}>
+            {s.icon} {adj.msg}
+          </div>
+        );
+      })}
 
       {/* Exercise cards */}
       {exercises.map(ex => (
@@ -499,6 +946,7 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
           onUpdateSet={(idx,s)=>onUpdateSet(ex.name,idx,s)}
           isFlagged={!!(injuredMuscles && (ex.muscleGroup||'').toLowerCase().includes(injuredMuscles.split(' ')[0]))}
           soreWarning={sorenessMuscles.includes((ex.muscleGroup||'').toLowerCase())}
+          niggleFlag={!!niggleFlags[ex.name]}
         />
       ))}
 
@@ -571,6 +1019,33 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
       }}>
         {saving ? 'Saving workout…' : 'Complete Workout ✓'}
       </button>
+
+      {/* Niggle button — floating bottom-right */}
+      <button onClick={()=>setShowNiggle(true)} style={{
+        position:'fixed', bottom:'136px', right:'16px',
+        background:'#1e293b', border:'1.5px solid rgba(251,191,36,0.35)',
+        borderRadius:'20px', padding:'9px 14px',
+        color:'#fbbf24', fontSize:'12px', fontWeight:'700',
+        cursor:'pointer', zIndex:51,
+        boxShadow:'0 4px 16px rgba(0,0,0,0.4)',
+        display:'flex', alignItems:'center', gap:'5px',
+      }}>
+        🤕 Niggle?
+      </button>
+
+      {/* Niggle modal */}
+      {showNiggle && (
+        <NiggleModal
+          exercises={exercises}
+          onFlag={(bodyPart, severity, flaggedExs) => {
+            const flags = {};
+            flaggedExs.forEach(ex => { flags[ex.name] = true; });
+            setNiggleFlags(prev => ({ ...prev, ...flags }));
+            if (onNiggleLog) onNiggleLog(bodyPart, severity, flaggedExs);
+          }}
+          onClose={() => setShowNiggle(false)}
+        />
+      )}
     </div>
   );
 }
@@ -732,6 +1207,7 @@ export default function TrainingPage() {
   const [activeExercises,  setActiveExercises]  = useState([]);
   const [activeSets,       setActiveSets]       = useState({});
   const [activeSession,    setActiveSession]    = useState(null);
+  const [allExercises,     setAllExercises]     = useState([]);
 
   const weekDays     = getWeekDays();
   const daysPerWeek  = parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
@@ -743,6 +1219,8 @@ export default function TrainingPage() {
       const [clients, progs, logs] = await Promise.all([
         readSheet('Clients'), readSheet('WorkoutPrograms'), readSheet('WorkoutLogs'),
       ]);
+      // Load exercises library for smart swap (non-fatal)
+      try { const exs = await readSheet('Exercises'); setAllExercises(exs || []); } catch {}
       const profile = clients.find(c=>c.ClientID===user.clientID) || null;
       setClientProfile(profile);
       // Fetch sessions for this program
@@ -775,24 +1253,54 @@ export default function TrainingPage() {
     return s;
   };
 
-  // Handle pre-workout form submission
+  // Handle pre-workout chat submission
   const handlePreWorkoutSubmit = (data) => {
     setPreWorkoutData(data);
     let exs = [];
     try { exs = JSON.parse(activeSession?.Exercises||'[]'); } catch {}
 
-    // Apply adjustments
+    // Smart injury-based exercise swap using Exercises sheet library
+    if (data.hasInjury && data.injuryNotes && allExercises.length > 0) {
+      exs = swapInjuredExercises(exs, data.injuryNotes, allExercises);
+    }
+
+    // Apply adjustments (banners + recovery detection)
     const adjs = getAdjustments(data, exs);
 
     // Recovery mode: reduce sets by 1
     if (adjs.some(a=>a.type==='recovery')) {
-      exs = exs.map(ex=>({...ex, sets: Math.max(1,ex.sets-1)}));
+      exs = exs.map(ex=>({...ex, sets: Math.max(1, ex.sets-1)}));
+    }
+
+    // Add swap-summary banner if exercises were swapped
+    const swappedCount = exs.filter(ex => ex.swappedForInjury).length;
+    if (swappedCount > 0) {
+      adjs.push({
+        type: 'swap',
+        msg: `${swappedCount} exercise${swappedCount > 1 ? 's have' : ' has'} been swapped for safer alternatives due to your reported injury.`,
+      });
     }
 
     setAdjustments(adjs);
     setActiveExercises(exs);
     setActiveSets(initActiveSets(exs));
     setView('active');
+  };
+
+  // Log in-workout niggle to AIQuestions for trainer review
+  const handleNiggleLog = async (bodyPart, severity, flaggedExercises) => {
+    try {
+      await appendToSheet('AIQuestions', {
+        QuestionID: `Q_NIG_${Date.now()}`,
+        ClientID:   user.clientID,
+        ClientName: user.name || '',
+        Question:   `[IN-WORKOUT NIGGLE] ${bodyPart} — Severity ${severity}/5 — During: ${activeSession?.SessionName || 'workout'}${flaggedExercises.length > 0 ? ` — Flagged: ${flaggedExercises.map(e=>e.name).join(', ')}` : ''}`,
+        Answer:    '',
+        Status:    'Flagged',
+        AskedAt:   new Date().toISOString(),
+        AnsweredAt:'',
+      });
+    } catch {}
   };
 
   const handleStartWorkout = (session) => {
@@ -902,7 +1410,13 @@ export default function TrainingPage() {
 
   // ── Sub-views ──
   if (view === 'preWorkout') {
-    return <PreWorkoutForm session={activeSession} onSubmit={handlePreWorkoutSubmit} onCancel={()=>setView('weekly')} />;
+    return (
+      <PreWorkoutChat
+        session={activeSession}
+        onSubmit={handlePreWorkoutSubmit}
+        onCancel={()=>setView('weekly')}
+      />
+    );
   }
   if (view === 'active') {
     return (
@@ -916,6 +1430,7 @@ export default function TrainingPage() {
         onAddExercise={handleAddExercise}
         onComplete={handleCompleteWorkout}
         onCancel={()=>setView('weekly')}
+        onNiggleLog={handleNiggleLog}
         saving={saving}
       />
     );
