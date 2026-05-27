@@ -117,4 +117,50 @@ async function scriptPost(payload) {
   return data;
 }
 
-// ─── Write helpers ───────────────────────────────
+// ─── Write helpers ────────────────────────────────────────────────────────────
+
+/**
+ * Insert or update a row identified by idColumn === id.
+ * Clears the sheet's cache entry so the next read fetches fresh data.
+ */
+export async function upsertRow(tab, idColumn, id, row) {
+  await scriptPost({ action: 'upsertRow', tab, idColumn, id, row });
+  invalidateCache(tab);
+}
+
+/**
+ * Append a new row to a sheet tab.
+ */
+export async function appendToSheet(tab, row) {
+  await scriptPost({ action: 'appendRow', tab, row });
+  invalidateCache(tab);
+}
+
+/**
+ * Delete the single row where idColumn === id.
+ */
+export async function deleteRow(tab, idColumn, id) {
+  await scriptPost({ action: 'deleteRow', tab, idColumn, id });
+  invalidateCache(tab);
+}
+
+/**
+ * Delete all rows where column === value.
+ */
+export async function deleteRowsWhere(tab, column, value) {
+  await scriptPost({ action: 'deleteRowsWhere', tab, column, value });
+  invalidateCache(tab);
+}
+
+/**
+ * Look up food nutrition via the Apps Script Claude proxy.
+ * Returns an array: [{ foodName, servingSize, calories, protein, carbs, fats, fibre }]
+ */
+export async function lookupFood(query) {
+  const url = config.APPS_SCRIPT_URL;
+  if (!url || url.startsWith('YOUR_')) {
+    throw new Error('apps_script_not_configured');
+  }
+  const data = await scriptPost({ action: 'lookupFood', query });
+  return data.results || [];
+}

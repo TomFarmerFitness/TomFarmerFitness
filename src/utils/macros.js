@@ -49,4 +49,41 @@ export function calculateMacros({ weightKg, heightCm, age, gender, trainingDaysP
     const dailyCalAdjustment = (totalWeightChange * 7700) / (tf * 7); // kcal/day above or below TDEE
     const rawCalories        = tdee + dailyCalAdjustment;
 
-    // Safety clamp: max 1,000 kcal deficit / 800 kcal surplus 
+    // Safety clamp: max 1,000 kcal deficit / 800 kcal surplus per day
+    const clamped = Math.min(Math.max(rawCalories, tdee - 1000), tdee + 800);
+    calories      = Math.max(Math.round(clamped), 1200);
+
+    weeklyChange  = Math.round((totalWeightChange / tf) * 10) / 10; // kg/week, 1 dp
+  } else {
+    // Fallback: goal-based fixed offset
+    switch (goal) {
+      case 'Weight Loss':    calories = tdee - 500; break;
+      case 'Fat Loss':       calories = tdee - 400; break;
+      case 'Muscle Gain':    calories = tdee + 300; break;
+      case 'Strength':       calories = tdee + 200; break;
+      default:               calories = tdee;
+    }
+    calories = Math.max(Math.round(calories), 1200);
+  }
+
+  // 4. Macros
+  // Protein: use target weight if losing, current weight if gaining/maintaining
+  const refWeight   = (tw > 0 && tw < w) ? tw : w; // avoid over-inflating protein on big cuts
+  const proteinPerKg = (goal === 'Muscle Gain' || goal === 'Strength') ? 2.2 : 2.0;
+  const protein = Math.round(proteinPerKg * refWeight);
+  const fats    = Math.round((calories * 0.28) / 9);
+  const carbs   = Math.max(Math.round((calories - protein * 4 - fats * 9) / 4), 0);
+
+  return { tdee, calories, protein, carbs, fats, weeklyChange };
+}
+
+/**
+ * Activity factor labels for display purposes.
+ */
+export function activityLabel(trainingDaysPerWeek) {
+  const days = Number(trainingDaysPerWeek);
+  if (days <= 1) return 'Light (1 day/wk)';
+  if (days <= 3) return 'Moderate (2–3 days/wk)';
+  if (days <= 5) return 'Active (4–5 days/wk)';
+  return 'Very Active (6–7 days/wk)';
+}
