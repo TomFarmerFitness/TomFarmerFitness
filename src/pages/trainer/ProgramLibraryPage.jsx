@@ -1179,3 +1179,8 @@ export default function ProgramLibraryPage() {
         <GenerateAIModal
           onClose={() => setGenerate(false)}
  
+          onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
+      )}
+    </div>
+  );
+}

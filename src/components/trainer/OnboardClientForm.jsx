@@ -20,7 +20,7 @@ const EMPTY = {
   gender: 'Male', age: '', goal: 'General Fitness',
   startDate: new Date().toISOString().slice(0,10),
   currentWeight: '', targetWeight: '', height: '',
-  goalTimeframe: '', // weeks to reach target weight
+  goalTimeframe: '',
   trainingDaysPerWeek: '3', equipment: [],
   injuries: '', notes: '', programId: '',
 };
@@ -60,8 +60,6 @@ function MacroPreview({ macros }) {
     </div>
   );
 }
-
-// ─── Field helpers ───────────────────────────────────────────────────────────
 
 function FieldLabel({ children, required }) {
   return (
@@ -125,8 +123,6 @@ function SectionHeader({ children }) {
   );
 }
 
-// ─── main component ──────────────────────────────────────────────────────────
-
 export default function OnboardClientForm({ programs = [], onClose, onSuccess }) {
   const [form,     setForm]     = useState(EMPTY);
   const [macros,   setMacros]   = useState(null);
@@ -135,7 +131,6 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
   const [showPw,   setShowPw]   = useState(false);
   const [visible,  setVisible]  = useState(false);
 
-  // Slide-in animation
   useEffect(() => {
     requestAnimationFrame(() => setVisible(true));
   }, []);
@@ -145,14 +140,12 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
     setTimeout(onClose, 280);
   }, [onClose]);
 
-  // ESC to close
   useEffect(() => {
     const handler = e => { if (e.key === 'Escape') close(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [close]);
 
-  // Recalculate macros when physical stats or goal change
   useEffect(() => {
     const { currentWeight, height, age, gender, trainingDaysPerWeek, goal, targetWeight, goalTimeframe } = form;
     if (currentWeight && height && age && gender) {
@@ -192,18 +185,14 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
-
-    // Basic validation
     if (!form.name.trim())        return setError('Name is required.');
     if (!form.email.trim())       return setError('Email is required.');
     if (!form.password.trim())    return setError('Password is required.');
     if (form.password.length < 6) return setError('Password must be at least 6 characters.');
-
     setSaving(true);
     try {
       const passwordHash = await hashPassword(form.password);
       const clientId     = `CLI_${Date.now()}`;
-
       const row = {
         ClientID:            clientId,
         Name:                form.name.trim(),
@@ -228,7 +217,6 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
         CarbTarget:          macros?.carbs    ?? '',
         FatTarget:           macros?.fats     ?? '',
       };
-
       await appendToSheet('Clients', row);
       onSuccess();
     } catch (err) {
@@ -287,9 +275,7 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
 
         {/* Scrollable form body */}
         <form onSubmit={handleSubmit} style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
-
           <SectionHeader>Personal Details</SectionHeader>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div style={{ gridColumn: '1/-1' }}>
               <FieldLabel required>Full Name</FieldLabel>
@@ -338,7 +324,6 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
           </div>
 
           <SectionHeader>Physical Stats</SectionHeader>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div>
               <FieldLabel required>Current Weight (kg)</FieldLabel>
@@ -362,7 +347,6 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
           </div>
 
           <SectionHeader>Training</SectionHeader>
-
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div>
               <FieldLabel required>Goal</FieldLabel>
@@ -416,7 +400,6 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
           )}
 
           <SectionHeader>Health Notes</SectionHeader>
-
           <div style={{ marginBottom: '12px' }}>
             <FieldLabel>Injuries / Limitations</FieldLabel>
             <textarea
@@ -455,10 +438,8 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
             />
           </div>
 
-          {/* Macro preview */}
           <MacroPreview macros={macros} />
 
-          {/* Error */}
           {error && (
             <div style={{
               marginTop: '14px', padding: '10px 14px',
@@ -469,7 +450,6 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
             </div>
           )}
 
-          {/* Extra bottom padding so last field isn't hidden behind footer */}
           <div style={{ height: '20px' }} />
         </form>
 
@@ -489,4 +469,30 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
               cursor: 'pointer', transition: 'all 0.12s',
             }}
             onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; e.currentTarget.style.color = '#e2e8f0'; }}
-        
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.color = '#94a3b8'; }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={saving}
+            style={{
+              flex: 2, padding: '10px', borderRadius: '9px',
+              background: saving ? 'rgba(249,115,22,0.5)' : 'linear-gradient(135deg, #f97316, #ea580c)',
+              border: 'none', color: '#fff', fontSize: '13.5px', fontWeight: '600',
+              cursor: saving ? 'not-allowed' : 'pointer', transition: 'all 0.12s',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+            }}
+          >
+            {saving ? (
+              <>
+                <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.3)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
+                Saving...
+              </>
+            ) : 'Save Client'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
