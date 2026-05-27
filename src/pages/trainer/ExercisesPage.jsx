@@ -442,4 +442,8 @@ export default function ExercisesPage() {
           ex={detailEx}
           onClose={() => setDetail(null)}
           onEdit={(ex) => { setDetail(null); setForm(ex); }}
-          onDelete={async (id) => { await handleDelete(id); setDe
+          onDelete={async (id) => { await handleDelete(id); setDetail(null); }} />
+      )}
+    </div>
+  );
+}

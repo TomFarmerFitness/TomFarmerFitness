@@ -704,264 +704,266 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
   };
 
   return (
-    {showScanner && (
-      <BarcodeScanner
-        onResult={handleBarcodeResult}
-        onClose={() => setShowScanner(false)}
-      />
-    )}
+    <>
+      {showScanner && (
+        <BarcodeScanner
+          onResult={handleBarcodeResult}
+          onClose={() => setShowScanner(false)}
+        />
+      )}
 
-    <div
-      ref={overlayRef}
-      onClick={e => { if (e.target === overlayRef.current) closeWithAnimation(onClose); }}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 200,
-        background: 'rgba(0,0,0,0.6)',
-        display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      }}
-    >
       <div
-        ref={sheetRef}
+        ref={overlayRef}
+        onClick={e => { if (e.target === overlayRef.current) closeWithAnimation(onClose); }}
         style={{
-          width: '100%', maxWidth: 430,
-          background: 'var(--surface, #111)',
-          borderRadius: '20px 20px 0 0',
-          padding: '0 0 calc(16px + env(safe-area-inset-bottom))',
-          maxHeight: '88vh',
-          display: 'flex', flexDirection: 'column',
-          overflowY: 'auto',
-          WebkitOverflowScrolling: 'touch',
+          position: 'fixed', inset: 0, zIndex: 200,
+          background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
         }}
       >
-        {/* Handle bar */}
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
-          <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border, #333)' }} />
-        </div>
-
-        {/* Header */}
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '12px 16px 8px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            {step !== 'search' && !manualMode && (
-              <button
-                onClick={() => setStep(step === 'quantity' ? 'results' : 'search')}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 20, padding: 0 }}
-              >←</button>
-            )}
-            <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)' }}>
-              {manualMode ? 'Manual Entry' : step === 'search' ? 'Add Food' : step === 'results' ? `Results for "${query}"` : selected?.foodName}
-            </span>
-          </div>
-          <button
-            onClick={() => closeWithAnimation(onClose)}
-            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 22, padding: 4 }}
-          >×</button>
-        </div>
-
-        <div style={{ padding: '8px 16px 16px', flex: 1 }}>
-
-          {/* ── Meal type selector (always visible) ── */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-            {MEAL_TYPES.map(mt => (
-              <button
-                key={mt.key}
-                onClick={() => setMealType(mt.key)}
-                style={{
-                  flex: 1, minWidth: 60,
-                  padding: '7px 4px', borderRadius: 10, border: 'none',
-                  cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                  background: mealType === mt.key ? '#22c55e' : 'var(--surface-secondary, #1a1a1a)',
-                  color: mealType === mt.key ? '#000' : 'var(--text-secondary)',
-                  transition: 'background 0.15s, color 0.15s',
-                }}
-              >
-                {mt.emoji} {mt.label}
-              </button>
-            ))}
+        <div
+          ref={sheetRef}
+          style={{
+            width: '100%', maxWidth: 430,
+            background: 'var(--surface, #111)',
+            borderRadius: '20px 20px 0 0',
+            padding: '0 0 calc(16px + env(safe-area-inset-bottom))',
+            maxHeight: '88vh',
+            display: 'flex', flexDirection: 'column',
+            overflowY: 'auto',
+            WebkitOverflowScrolling: 'touch',
+          }}
+        >
+          {/* Handle bar */}
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0 0' }}>
+            <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border, #333)' }} />
           </div>
 
-          {/* ── MANUAL MODE ── */}
-          {manualMode ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input style={inputStyle} placeholder="Food name *" value={manualFood.name}
-                onChange={e => setManualFood(f => ({ ...f, name: e.target.value }))} />
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                {[['Calories (kcal)*','calories'],['Protein (g)','protein'],['Carbs (g)','carbs'],['Fats (g)','fats']].map(([ph, k]) => (
-                  <input key={k} type="number" min="0" style={inputStyle} placeholder={ph}
-                    value={manualFood[k]}
-                    onChange={e => setManualFood(f => ({ ...f, [k]: e.target.value }))} />
-                ))}
-              </div>
-              <button
-                onClick={handleManualSave}
-                disabled={!manualFood.name || !manualFood.calories}
-                style={{ ...btnPrimary, opacity: (!manualFood.name || !manualFood.calories) ? 0.4 : 1 }}
-              >
-                Add to {mealType}
-              </button>
-              <button onClick={() => setManualMode(false)}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 14, padding: '8px 0' }}>
-                ← Back to search
-              </button>
-            </div>
-          ) : step === 'search' ? (
-            /* ── SEARCH STEP ── */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <input
-                  style={{ ...inputStyle, flex: 1 }}
-                  placeholder="e.g. chicken breast, banana, oats…"
-                  value={query}
-                  onChange={e => setQuery(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                  autoFocus
-                />
+          {/* Header */}
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '12px 16px 8px',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {step !== 'search' && !manualMode && (
                 <button
-                  onClick={handleSearch}
-                  disabled={!query.trim() || searching}
+                  onClick={() => setStep(step === 'quantity' ? 'results' : 'search')}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 20, padding: 0 }}
+                >←</button>
+              )}
+              <span style={{ fontSize: 17, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {manualMode ? 'Manual Entry' : step === 'search' ? 'Add Food' : step === 'results' ? `Results for "${query}"` : selected?.foodName}
+              </span>
+            </div>
+            <button
+              onClick={() => closeWithAnimation(onClose)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 22, padding: 4 }}
+            >×</button>
+          </div>
+
+          <div style={{ padding: '8px 16px 16px', flex: 1 }}>
+
+            {/* ── Meal type selector (always visible) ── */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+              {MEAL_TYPES.map(mt => (
+                <button
+                  key={mt.key}
+                  onClick={() => setMealType(mt.key)}
                   style={{
-                    background: '#22c55e', border: 'none', borderRadius: 10,
-                    padding: '0 16px', cursor: 'pointer',
-                    color: '#000', fontWeight: 700, fontSize: 14,
-                    opacity: (!query.trim() || searching) ? 0.5 : 1,
+                    flex: 1, minWidth: 60,
+                    padding: '7px 4px', borderRadius: 10, border: 'none',
+                    cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                    background: mealType === mt.key ? '#22c55e' : 'var(--surface-secondary, #1a1a1a)',
+                    color: mealType === mt.key ? '#000' : 'var(--text-secondary)',
+                    transition: 'background 0.15s, color 0.15s',
                   }}
                 >
-                  {searching ? '…' : 'Search'}
-                </button>
-              </div>
-
-              {/* Barcode scan button */}
-              <button
-                onClick={() => setShowScanner(true)}
-                style={{
-                  width: '100%', padding: '13px',
-                  background: 'var(--surface-secondary, #1a1a1a)',
-                  border: '1px solid var(--border, #333)',
-                  borderRadius: 10, cursor: 'pointer',
-                  color: 'var(--text-primary)', fontSize: 14, fontWeight: 600,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                }}
-              >
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
-                  <rect x="7" y="7" width="3" height="10" rx="1"/><rect x="14" y="7" width="3" height="10" rx="1"/>
-                </svg>
-                Scan Barcode
-              </button>
-
-              {searchError && (
-                <div style={{
-                  background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
-                  padding: '10px 12px', fontSize: 13, color: '#fbbf24',
-                }}>
-                  {searchError}
-                </div>
-              )}
-
-              <button onClick={() => setManualMode(true)} style={{
-                background: 'none', border: '1px dashed var(--border, #333)',
-                borderRadius: 10, padding: '12px', cursor: 'pointer',
-                color: 'var(--text-secondary)', fontSize: 14,
-              }}>
-                Enter macros manually instead
-              </button>
-            </div>
-          ) : step === 'results' ? (
-            /* ── RESULTS STEP ── */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {results.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)', fontSize: 14 }}>
-                  No results found. <button onClick={() => setManualMode(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 14 }}>Enter manually?</button>
-                </div>
-              ) : results.map((food, i) => (
-                <button key={i} onClick={() => handleSelectFood(food)} style={{
-                  background: 'var(--surface-secondary, #1a1a1a)',
-                  border: '1px solid var(--border, #2a2a2a)',
-                  borderRadius: 12, padding: '12px 14px',
-                  cursor: 'pointer', textAlign: 'left',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                }}>
-                  <div>
-                    <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>{food.foodName}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      per {food.servingSize || 100}g · {Math.round(food.protein)}p · {Math.round(food.carbs)}c · {Math.round(food.fats)}f
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginLeft: 10 }}>
-                    {Math.round(food.calories)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)' }}> kcal</span>
-                  </div>
+                  {mt.emoji} {mt.label}
                 </button>
               ))}
-              <button onClick={() => setManualMode(true)} style={{
-                background: 'none', border: '1px dashed var(--border, #333)',
-                borderRadius: 10, padding: '11px', cursor: 'pointer',
-                color: 'var(--text-secondary)', fontSize: 13, marginTop: 4,
-              }}>
-                Not what I was looking for — enter manually
-              </button>
             </div>
-          ) : (
-            /* ── QUANTITY STEP ── */
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Portion quick-picks */}
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Serving size</div>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {COMMON_PORTIONS.map(p => {
-                    const g = p.grams ?? (selected?.servingSize || 100);
-                    return (
-                      <button key={p.label} onClick={() => setServingG(g)} style={{
-                        padding: '7px 12px', borderRadius: 10, border: 'none',
-                        cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                        background: servingG === g ? '#22c55e' : 'var(--surface-secondary, #1a1a1a)',
-                        color: servingG === g ? '#000' : 'var(--text-secondary)',
-                        transition: 'background 0.15s',
-                      }}>
-                        {p.label === '1 serve' ? `1 serve (${g}g)` : p.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
 
-              {/* Custom grams input */}
-              <div>
-                <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>Or enter grams</div>
-                <input
-                  type="number" min="1" max="2000"
-                  style={{ ...inputStyle, width: 120 }}
-                  value={servingG}
-                  onChange={e => setServingG(Math.max(1, parseInt(e.target.value) || 1))}
-                />
-                <span style={{ fontSize: 13, color: 'var(--text-tertiary)', marginLeft: 8 }}>g</span>
-              </div>
-
-              {/* Live preview */}
-              {scaled && (
-                <div style={{
-                  background: 'var(--surface-secondary, #1a1a1a)',
-                  borderRadius: 12, padding: '12px 14px',
-                  display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, textAlign: 'center',
-                }}>
-                  {[['Calories', scaled.calories, 'kcal'], ['Protein', scaled.protein, 'g'], ['Carbs', scaled.carbs, 'g'], ['Fats', scaled.fats, 'g']].map(([label, val, unit]) => (
-                    <div key={label}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{val}{unit === 'kcal' ? '' : unit}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{label}{unit === 'kcal' ? ' kcal' : ''}</div>
-                    </div>
+            {/* ── MANUAL MODE ── */}
+            {manualMode ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <input style={inputStyle} placeholder="Food name *" value={manualFood.name}
+                  onChange={e => setManualFood(f => ({ ...f, name: e.target.value }))} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  {[['Calories (kcal)*','calories'],['Protein (g)','protein'],['Carbs (g)','carbs'],['Fats (g)','fats']].map(([ph, k]) => (
+                    <input key={k} type="number" min="0" style={inputStyle} placeholder={ph}
+                      value={manualFood[k]}
+                      onChange={e => setManualFood(f => ({ ...f, [k]: e.target.value }))} />
                   ))}
                 </div>
-              )}
+                <button
+                  onClick={handleManualSave}
+                  disabled={!manualFood.name || !manualFood.calories}
+                  style={{ ...btnPrimary, opacity: (!manualFood.name || !manualFood.calories) ? 0.4 : 1 }}
+                >
+                  Add to {mealType}
+                </button>
+                <button onClick={() => setManualMode(false)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)', fontSize: 14, padding: '8px 0' }}>
+                  ← Back to search
+                </button>
+              </div>
+            ) : step === 'search' ? (
+              /* ── SEARCH STEP ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    style={{ ...inputStyle, flex: 1 }}
+                    placeholder="e.g. chicken breast, banana, oats…"
+                    value={query}
+                    onChange={e => setQuery(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSearch}
+                    disabled={!query.trim() || searching}
+                    style={{
+                      background: '#22c55e', border: 'none', borderRadius: 10,
+                      padding: '0 16px', cursor: 'pointer',
+                      color: '#000', fontWeight: 700, fontSize: 14,
+                      opacity: (!query.trim() || searching) ? 0.5 : 1,
+                    }}
+                  >
+                    {searching ? '…' : 'Search'}
+                  </button>
+                </div>
 
-              <button onClick={handleSave} style={btnPrimary}>
-                Add to {mealType}
-              </button>
-            </div>
-          )}
+                {/* Barcode scan button */}
+                <button
+                  onClick={() => setShowScanner(true)}
+                  style={{
+                    width: '100%', padding: '13px',
+                    background: 'var(--surface-secondary, #1a1a1a)',
+                    border: '1px solid var(--border, #333)',
+                    borderRadius: 10, cursor: 'pointer',
+                    color: 'var(--text-primary)', fontSize: 14, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>
+                    <rect x="7" y="7" width="3" height="10" rx="1"/><rect x="14" y="7" width="3" height="10" rx="1"/>
+                  </svg>
+                  Scan Barcode
+                </button>
+
+                {searchError && (
+                  <div style={{
+                    background: '#1a1a1a', border: '1px solid #333', borderRadius: 10,
+                    padding: '10px 12px', fontSize: 13, color: '#fbbf24',
+                  }}>
+                    {searchError}
+                  </div>
+                )}
+
+                <button onClick={() => setManualMode(true)} style={{
+                  background: 'none', border: '1px dashed var(--border, #333)',
+                  borderRadius: 10, padding: '12px', cursor: 'pointer',
+                  color: 'var(--text-secondary)', fontSize: 14,
+                }}>
+                  Enter macros manually instead
+                </button>
+              </div>
+            ) : step === 'results' ? (
+              /* ── RESULTS STEP ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {results.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)', fontSize: 14 }}>
+                    No results found. <button onClick={() => setManualMode(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 14 }}>Enter manually?</button>
+                  </div>
+                ) : results.map((food, i) => (
+                  <button key={i} onClick={() => handleSelectFood(food)} style={{
+                    background: 'var(--surface-secondary, #1a1a1a)',
+                    border: '1px solid var(--border, #2a2a2a)',
+                    borderRadius: 12, padding: '12px 14px',
+                    cursor: 'pointer', textAlign: 'left',
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  }}>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>{food.foodName}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                        per {food.servingSize || 100}g · {Math.round(food.protein)}p · {Math.round(food.carbs)}c · {Math.round(food.fats)}f
+                      </div>
+                    </div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginLeft: 10 }}>
+                      {Math.round(food.calories)}<span style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-tertiary)' }}> kcal</span>
+                    </div>
+                  </button>
+                ))}
+                <button onClick={() => setManualMode(true)} style={{
+                  background: 'none', border: '1px dashed var(--border, #333)',
+                  borderRadius: 10, padding: '11px', cursor: 'pointer',
+                  color: 'var(--text-secondary)', fontSize: 13, marginTop: 4,
+                }}>
+                  Not what I was looking for — enter manually
+                </button>
+              </div>
+            ) : (
+              /* ── QUANTITY STEP ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                {/* Portion quick-picks */}
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Serving size</div>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    {COMMON_PORTIONS.map(p => {
+                      const g = p.grams ?? (selected?.servingSize || 100);
+                      return (
+                        <button key={p.label} onClick={() => setServingG(g)} style={{
+                          padding: '7px 12px', borderRadius: 10, border: 'none',
+                          cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                          background: servingG === g ? '#22c55e' : 'var(--surface-secondary, #1a1a1a)',
+                          color: servingG === g ? '#000' : 'var(--text-secondary)',
+                          transition: 'background 0.15s',
+                        }}>
+                          {p.label === '1 serve' ? `1 serve (${g}g)` : p.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Custom grams input */}
+                <div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>Or enter grams</div>
+                  <input
+                    type="number" min="1" max="2000"
+                    style={{ ...inputStyle, width: 120 }}
+                    value={servingG}
+                    onChange={e => setServingG(Math.max(1, parseInt(e.target.value) || 1))}
+                  />
+                  <span style={{ fontSize: 13, color: 'var(--text-tertiary)', marginLeft: 8 }}>g</span>
+                </div>
+
+                {/* Live preview */}
+                {scaled && (
+                  <div style={{
+                    background: 'var(--surface-secondary, #1a1a1a)',
+                    borderRadius: 12, padding: '12px 14px',
+                    display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, textAlign: 'center',
+                  }}>
+                    {[['Calories', scaled.calories, 'kcal'], ['Protein', scaled.protein, 'g'], ['Carbs', scaled.carbs, 'g'], ['Fats', scaled.fats, 'g']].map(([label, val, unit]) => (
+                      <div key={label}>
+                        <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)' }}>{val}{unit === 'kcal' ? '' : unit}</div>
+                        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{label}{unit === 'kcal' ? ' kcal' : ''}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button onClick={handleSave} style={btnPrimary}>
+                  Add to {mealType}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -1144,4 +1146,241 @@ function WeeklyView({ nutritionRows, targets }) {
 
 // ─── NutritionPage (main) ──────────────────────────────────────────────────
 
-export default function Nutritio
+export default function NutritionPage() {
+  const { user } = useAuth();
+
+  // View state
+  const [activeTab,      setActiveTab]      = useState('daily');   // 'daily' | 'weekly'
+  const [selectedDate,   setSelectedDate]   = useState(todayISO());
+
+  // Data
+  const [loading,        setLoading]        = useState(true);
+  const [error,          setError]          = useState('');
+  const [nutritionRows,  setNutritionRows]  = useState([]);  // all rows fetched
+  const [clientData,     setClientData]     = useState(null);
+
+  // Add Food modal
+  const [showAddFood,    setShowAddFood]    = useState(false);
+  const [addFoodMeal,    setAddFoodMeal]    = useState('Breakfast');
+
+  // ── Fetch data ────────────────────────────────────────────────────────────
+
+  const fetchData = useCallback(async () => {
+    if (!user?.clientID) return;
+    setLoading(true);
+    setError('');
+    try {
+      const [clients, nutrition] = await Promise.all([
+        readSheet('Clients'),
+        readSheet('NutritionLogs'),
+      ]);
+
+      const client = clients.find(c =>
+        (c.ClientID || c.Email?.toLowerCase()) === (user.clientID || user.email?.toLowerCase())
+      );
+      setClientData(client || null);
+
+      const myRows = nutrition
+        .filter(r => r.ClientID === user.clientID)
+        .map(parseNutritionRow);
+      setNutritionRows(myRows);
+    } catch (e) {
+      console.error('NutritionPage fetch error:', e);
+      setError('Could not load nutrition data.');
+    } finally {
+      setLoading(false);
+    }
+  }, [user]);
+
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // ── Derived targets ────────────────────────────────────────────────────────
+
+  const targets = (() => {
+    if (!clientData) return { calories: 2000, protein: 150, carbs: 200, fats: 65 };
+    return {
+      calories: parseFloat(clientData.DailyCalories)  || 2000,
+      protein:  parseFloat(clientData.ProteinTarget)  || 150,
+      carbs:    parseFloat(clientData.CarbTarget)     || 200,
+      fats:     parseFloat(clientData.FatTarget)      || 65,
+    };
+  })();
+
+  // ── Today's rows ──────────────────────────────────────────────────────────
+
+  const dayRows = nutritionRows.filter(r => r.date === selectedDate);
+
+  const totals = dayRows.reduce((acc, r) => ({
+    calories: acc.calories + r.calories,
+    protein:  acc.protein  + r.protein,
+    carbs:    acc.carbs    + r.carbs,
+    fats:     acc.fats     + r.fats,
+    fibre:    acc.fibre    + r.fibre,
+  }), { calories: 0, protein: 0, carbs: 0, fats: 0, fibre: 0 });
+
+  // ── Save food ──────────────────────────────────────────────────────────────
+
+  async function handleSaveFood(foodData) {
+    const logId = `NL-${Date.now()}`;
+    const row = {
+      LogID:     logId,
+      ClientID:  user.clientID,
+      Date:      selectedDate,
+      MealType:  foodData.mealType,
+      FoodName:  foodData.foodName,
+      ServingG:  foodData.servingG,
+      Calories:  foodData.calories,
+      Protein:   foodData.protein,
+      Carbs:     foodData.carbs,
+      Fats:      foodData.fats,
+      Fibre:     foodData.fibre || 0,
+      LoggedAt:  new Date().toISOString(),
+    };
+
+    // Optimistic UI update
+    setNutritionRows(prev => [...prev, parseNutritionRow(row)]);
+
+    try {
+      await appendToSheet('NutritionLogs', row);
+    } catch (e) {
+      console.error('Failed to save food log:', e);
+      // Revert optimistic update on failure
+      setNutritionRows(prev => prev.filter(r => r.logId !== logId));
+    }
+  }
+
+  // ── Delete food (optimistic) ───────────────────────────────────────────────
+  // Note: deletion via Apps Script requires implementing a 'delete' action.
+  // For now, we remove from local state only (trainer can delete from sheet if needed).
+  function handleDeleteItem(logId) {
+    setNutritionRows(prev => prev.filter(r => r.logId !== logId));
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 12 }}>🥗</div>
+          <div style={{ color: 'var(--text-secondary)', fontSize: 14 }}>Loading nutrition…</div>
+        </div>
+      </div>
+    );
+  }
+
+  const cardStyle = {
+    background: 'var(--surface, #111)',
+    borderRadius: 14, margin: '0 16px 12px',
+    border: '1px solid var(--border, #2a2a2a)',
+  };
+
+  return (
+    <div style={{ paddingBottom: 20 }}>
+
+      {/* ── Tab Bar: Daily / Weekly ── */}
+      <div style={{ display: 'flex', margin: '0 16px 4px', gap: 6 }}>
+        {[['daily','Daily'],['weekly','Weekly']].map(([val, label]) => (
+          <button key={val} onClick={() => setActiveTab(val)} style={{
+            flex: 1, padding: '9px', borderRadius: 10, border: 'none',
+            cursor: 'pointer', fontSize: 14, fontWeight: 600,
+            background: activeTab === val ? '#22c55e' : 'var(--surface, #111)',
+            color: activeTab === val ? '#000' : 'var(--text-secondary)',
+            transition: 'background 0.15s, color 0.15s',
+          }}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {error && (
+        <div style={{
+          margin: '8px 16px', padding: '10px 14px', borderRadius: 10,
+          background: '#1a1a1a', border: '1px solid #333',
+          fontSize: 13, color: '#fbbf24',
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* ── DAILY VIEW ── */}
+      {activeTab === 'daily' && (
+        <>
+          {/* Date selector */}
+          <DateSelector date={selectedDate} onChange={setSelectedDate} />
+
+          {/* Calorie ring */}
+          <div style={{ ...cardStyle, padding: '4px 16px 12px' }}>
+            <CalorieRing consumed={Math.round(totals.calories)} target={targets.calories} />
+
+            {/* Macro bars */}
+            <div style={{ marginTop: 4 }}>
+              <MacroBar label="Protein" consumed={totals.protein} target={targets.protein} color="#3b82f6" />
+              <MacroBar label="Carbs"   consumed={totals.carbs}   target={targets.carbs}   color="#f59e0b" />
+              <MacroBar label="Fats"    consumed={totals.fats}    target={targets.fats}    color="#f97316" />
+            </div>
+          </div>
+
+          {/* Remaining macros text */}
+          <RemainingMacros
+            protein={totals.protein} carbs={totals.carbs} fats={totals.fats}
+            targetProtein={targets.protein} targetCarbs={targets.carbs} targetFats={targets.fats}
+          />
+
+          {/* Fibre (if any logged) */}
+          {totals.fibre > 0 && (
+            <div style={{
+              ...cardStyle, padding: '10px 14px',
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Fibre</span>
+              <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+                {Math.round(totals.fibre)}g
+              </span>
+            </div>
+          )}
+
+          {/* Meal sections */}
+          {MEAL_TYPES.map(mt => (
+            <MealSection
+              key={mt.key}
+              mealType={mt}
+              items={dayRows.filter(r => r.mealType === mt.key)}
+              onAddFood={mealKey => { setAddFoodMeal(mealKey); setShowAddFood(true); }}
+              onDeleteItem={handleDeleteItem}
+            />
+          ))}
+
+          {/* Quick add button at bottom */}
+          <div style={{ padding: '4px 16px 0' }}>
+            <button
+              onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
+              style={{
+                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              + Add Food
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── WEEKLY VIEW ── */}
+      {activeTab === 'weekly' && (
+        <WeeklyView nutritionRows={nutritionRows} targets={targets} />
+      )}
+
+      {/* ── AddFoodModal ── */}
+      {showAddFood && (
+        <AddFoodModal
+          initialMealType={addFoodMeal}
+          clientTargets={targets}
+          onSave={handleSaveFood}
+          onClose={() => setShowAddFood(false)}
+        />
+      )}
+    </div>
+  );
+}
