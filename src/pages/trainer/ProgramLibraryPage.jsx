@@ -11,6 +11,10 @@ const FOCUS_AREAS = [
   'Legs', 'Chest & Triceps', 'Back & Biceps', 'Shoulders', 'Arms', 'Core',
 ];
 
+const SESSION_DURATIONS = [20, 30, 45, 60, 75, 90];
+
+const TRAINING_TYPES = ['HIIT', 'Strength and Conditioning', 'Hypertrophy', 'Mobility'];
+
 const EQUIPMENT_OPTIONS = [
   'Barbell', 'Dumbbells', 'Cables', 'Machines', 'Kettlebells',
   'Bodyweight', 'Resistance Bands', 'TRX', 'Smith Machine',
@@ -508,6 +512,21 @@ function StepDetails({ data, onChange }) {
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
         <div>
+          <label style={labelStyle}>TRAINING TYPE</label>
+          <select value={data.trainingType} onChange={e => onChange('trainingType', e.target.value)} style={inputStyle}>
+            {TRAINING_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>SESSION DURATION</label>
+          <select value={data.sessionDuration} onChange={e => onChange('sessionDuration', +e.target.value)} style={inputStyle}>
+            {SESSION_DURATIONS.map(d => <option key={d} value={d}>{d} mins</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
+        <div>
           <label style={labelStyle}>DURATION (weeks)</label>
           <input type="number" min={1} max={52} value={data.durationWeeks}
             onChange={e => onChange('durationWeeks', +e.target.value)}
@@ -839,6 +858,7 @@ const STEP_LABELS = ['Details', 'Training Days', 'Exercises'];
 const defaultProgramData = () => ({
   name: '', description: '', goal: 'Muscle Gain', daysPerWeek: 4,
   durationWeeks: 8, level: 'Intermediate', equipment: [], focusAreas: [],
+  sessionDuration: 60, trainingType: 'Hypertrophy',
 });
 
 function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
@@ -849,6 +869,8 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
     goal: initial.goal, daysPerWeek: initial.daysPerWeek,
     durationWeeks: initial.durationWeeks || 8, level: initial.level || 'Intermediate',
     equipment: initial.equipment || [], focusAreas: initial.focusAreas || [],
+    sessionDuration: initial.sessionDuration || 60,
+    trainingType: initial.trainingType || 'Hypertrophy',
   } : defaultProgramData());
   const [days, setDays]     = useState(initial?.days || initDays(data.daysPerWeek));
   const [saving, setSaving] = useState(false);
@@ -1024,12 +1046,13 @@ export default function ProgramLibraryPage() {
 
   // Save program (create or edit)
   const handleSaveProgram = async ({ id, name, description, goal, daysPerWeek,
-    durationWeeks, level, equipment, focusAreas, days }) => {
+    durationWeeks, level, equipment, focusAreas, days, sessionDuration, trainingType }) => {
     const programId = id || generateId('prog');
     const rowData = {
       ProgramID: programId, Name: name, Description: description,
       Goal: goal, DaysPerWeek: daysPerWeek, DurationWeeks: durationWeeks,
       Level: level, Equipment: equipment.join(', '), FocusAreas: focusAreas.join(', '),
+      SessionDuration: sessionDuration || 60, TrainingType: trainingType || 'Hypertrophy',
       DaysJSON: JSON.stringify(days), CreatedAt: id ? undefined : todayISO(),
     };
     if (id) delete rowData.CreatedAt;
@@ -1037,7 +1060,7 @@ export default function ProgramLibraryPage() {
 
     // Optimistic update
     const newProg = { id: programId, name, description, goal, daysPerWeek,
-      durationWeeks, level, equipment, focusAreas, days };
+      durationWeeks, level, equipment, focusAreas, days, sessionDuration, trainingType };
     setPrograms(prev => id
       ? prev.map(p => p.id === id ? newProg : p)
       : [newProg, ...prev]);
@@ -1183,4 +1206,41 @@ export default function ProgramLibraryPage() {
       )}
     </div>
   );
+}
+                Create your first program
+              </button>
+            </div>
+          ) : filtered.map(prog => (
+            <ProgramCard key={prog.id} program={prog}
+              clientCount={(assignedMap[prog.id]||[]).length}
+              onEdit={() => setEditTarget(prog)}
+              onCopy={() => handleCopy(prog)}
+              onAssign={() => setAssignTarget(prog)} />
+          ))}
+        </div>
+      </div>
+
+      {/* Modals */}
+      {(createOpen || editTarget) && (
+        <CreateProgramModal
+          initial={editTarget || aiInitial}
+          allExercises={exercises}
+          onClose={() => { setCreateOpen(false); setEditTarget(null); setAIInitial(null); }}
+          onSave={handleSaveProgram} />
+      )}
+      {assignTarget && (
+        <AssignModal program={assignTarget} clients={clients}
+          assignedMap={assignedMap}
+          onClose={() => setAssignTarget(null)}
+          onSave={handleAssign} />
+      )}
+      {generateOpen && (
+        <GenerateAIModal
+          onClose={() => setGenerate(false)}
+
+          onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
+      )}
+    </div>
+  );
+}
 }
