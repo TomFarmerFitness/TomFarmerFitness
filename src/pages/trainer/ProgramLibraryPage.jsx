@@ -303,15 +303,17 @@ function AssignModal({ program, clients, assignedMap, onClose, onSave }) {
 
 // ─── GenerateAIModal ──────────────────────────────────────────────────────────
 function GenerateAIModal({ onClose, onGenerated }) {
-  const [goal, setGoal]           = useState('Muscle Gain');
-  const [daysPerWeek, setDays]    = useState(4);
-  const [duration, setDuration]   = useState(8);
-  const [level, setLevel]         = useState('Intermediate');
-  const [equipment, setEquipment] = useState([]);
-  const [focus, setFocus]         = useState([]);
-  const [notes, setNotes]         = useState('');
-  const [loading, setLoading]     = useState(false);
-  const [error, setError]         = useState('');
+  const [goal, setGoal]                   = useState('Muscle Gain');
+  const [daysPerWeek, setDays]            = useState(4);
+  const [duration, setDuration]           = useState(8);
+  const [sessionDuration, setSession]     = useState(60);
+  const [trainingType, setTrainingType]   = useState('Hypertrophy');
+  const [level, setLevel]                 = useState('Intermediate');
+  const [equipment, setEquipment]         = useState([]);
+  const [focus, setFocus]                 = useState([]);
+  const [notes, setNotes]                 = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [error, setError]                 = useState('');
 
   const toggleArr = (arr, setArr, val) =>
     setArr(a => a.includes(val) ? a.filter(x => x !== val) : [...a, val]);
@@ -323,6 +325,7 @@ function GenerateAIModal({ onClose, onGenerated }) {
         method:'POST', redirect: 'follow',
         body: JSON.stringify({
           action:'generateProgram', goal, daysPerWeek, durationWeeks: duration,
+          sessionDuration, trainingType,
           level, equipment, focusAreas: focus, notes,
         }),
         // No Content-Type — avoids CORS preflight
@@ -374,7 +377,7 @@ function GenerateAIModal({ onClose, onGenerated }) {
             </div>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'12px' }}>
             <div>
               <div style={labelStyle}>DAYS PER WEEK</div>
               <select value={daysPerWeek} onChange={e => setDays(+e.target.value)} style={inputStyle}>
@@ -386,6 +389,21 @@ function GenerateAIModal({ onClose, onGenerated }) {
               <select value={duration} onChange={e => setDuration(+e.target.value)} style={inputStyle}>
                 {[4,6,8,10,12,16].map(n => <option key={n} value={n}>{n} weeks</option>)}
               </select>
+            </div>
+            <div>
+              <div style={labelStyle}>SESSION</div>
+              <select value={sessionDuration} onChange={e => setSession(+e.target.value)} style={inputStyle}>
+                {[20,30,45,60,75,90].map(n => <option key={n} value={n}>{n} mins</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <div style={labelStyle}>TRAINING TYPE</div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
+              {TRAINING_TYPES.map(t => (
+                <button key={t} style={chipStyle(trainingType===t)} onClick={() => setTrainingType(t)}>{t}</button>
+              ))}
             </div>
           </div>
 

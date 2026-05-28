@@ -159,16 +159,20 @@ function doPost(e) {
       var apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
       if (!apiKey) throw new Error('CLAUDE_API_KEY not set in Script Properties');
 
-      var goal        = data.goal        || 'General Fitness';
-      var daysPerWeek = data.daysPerWeek || 3;
-      var duration    = data.durationWeeks || 8;
-      var level       = data.level       || 'Intermediate';
-      var equipment   = (data.equipment  || []).join(', ') || 'Any';
-      var focus       = (data.focusAreas || []).join(', ') || 'Full body';
-      var notes       = data.notes       || '';
+      var goal            = data.goal            || 'General Fitness';
+      var daysPerWeek     = data.daysPerWeek     || 3;
+      var duration        = data.durationWeeks   || 8;
+      var sessionDuration = data.sessionDuration || 60;
+      var trainingType    = data.trainingType    || 'Hypertrophy';
+      var level           = data.level           || 'Intermediate';
+      var equipment       = (data.equipment      || []).join(', ') || 'Any';
+      var focus           = (data.focusAreas     || []).join(', ') || 'Full body';
+      var notes           = data.notes           || '';
 
       var prompt = 'You are an expert personal trainer. Generate a complete training program as compact JSON.\n' +
         'Goal: ' + goal + '\n' +
+        'Training Type: ' + trainingType + '\n' +
+        'Session Duration: ' + sessionDuration + ' minutes per workout\n' +
         'Days per week: ' + daysPerWeek + '\n' +
         'Duration: ' + duration + ' weeks\n' +
         'Level: ' + level + '\n' +
@@ -178,6 +182,8 @@ function doPost(e) {
         '\nRULES:\n' +
         '- Return ONLY valid JSON, no markdown, no extra text\n' +
         '- Maximum 6 exercises per day\n' +
+        '- Design each day to fit within ' + sessionDuration + ' minutes\n' +
+        '- Match exercise selection, sets, and rest periods to the ' + trainingType + ' training style\n' +
         '- Keep all string values SHORT (name under 30 chars, notes under 40 chars)\n' +
         '- Use empty string "" for notes fields\n' +
         '\nJSON schema (fill in real values):\n' +
