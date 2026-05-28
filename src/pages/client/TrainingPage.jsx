@@ -1197,6 +1197,7 @@ export default function TrainingPage() {
   const [sessions,     setSessions]     = useState([]);
   const [workoutLogs,  setWorkoutLogs]  = useState([]);
   const [clientProfile,setClientProfile]= useState(null);
+  const [activeProgram,setActiveProgram]= useState(null);
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState(null);
@@ -1210,27 +1211,50 @@ export default function TrainingPage() {
   const [allExercises,     setAllExercises]     = useState([]);
 
   const weekDays     = getWeekDays();
-  const daysPerWeek  = parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
+  const daysPerWeek  = parseInt(activeProgram?.DaysPerWeek) || parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
 
   const fetchData = useCallback(async () => {
     if (!user?.clientID) return;
     setLoading(true); setError(null);
     try {
-      const [clients, progs, logs] = await Promise.all([
-        readSheet('Clients'), readSheet('WorkoutPrograms'), readSheet('WorkoutLogs'),
+      const [clients, cpRows, progRows, logs] = await Promise.all([
+        readSheet('Clients'),
+        readSheet('ClientPrograms'),
+        readSheet('Programs'),
+        readSheet('WorkoutLogs'),
       ]);
       // Load exercises library for smart swap (non-fatal)
       try { const exs = await readSheet('Exercises'); setAllExercises(exs || []); } catch {}
-      const profile = clients.find(c=>c.ClientID===user.clientID) || null;
+
+      const profile = clients.find(c => c.ClientID === user.clientID) || null;
       setClientProfile(profile);
-      // Fetch sessions for this program
-      let sessRows = [];
-      try { sessRows = await readSheet('WorkoutSessions'); } catch {}
-      const mySessions = profile?.ProgramID
-        ? sessRows.filter(s=>s.ProgramID===profile.ProgramID)
-        : [];
+
+      // Find active program assignment from ClientPrograms
+      const myAssignment = cpRows.find(
+        cp => cp.ClientID === user.clientID && cp.Status === 'Active'
+      );
+      const myProgram = myAssignment
+        ? progRows.find(p => p.ProgramID === myAssignment.ProgramID) || null
+        : null;
+      setActiveProgram(myProgram);
+
+      // Transform DaysJSON into session-like objects WorkoutDayCard expects
+      let mySessions = [];
+      if (myProgram?.DaysJSON) {
+        try {
+          const days = JSON.parse(myProgram.DaysJSON);
+          mySessions = days.map(day => ({
+            SessionID:   `${myProgram.ProgramID}_day${day.dayOrder}`,
+            ProgramID:   myProgram.ProgramID,
+            DayOrder:    String(day.dayOrder),
+            SessionName: day.dayName || `Day ${day.dayOrder}`,
+            FocusArea:   day.focusArea || '',
+            Exercises:   JSON.stringify(day.exercises || []),
+          }));
+        } catch { /* malformed DaysJSON — leave empty */ }
+      }
       setSessions(mySessions);
-      setWorkoutLogs(logs.filter(l=>l.ClientID===user.clientID));
+      setWorkoutLogs(logs.filter(l => l.ClientID === user.clientID));
     } catch { setError('Could not load training data.'); }
     finally { setLoading(false); }
   }, [user?.clientID]);

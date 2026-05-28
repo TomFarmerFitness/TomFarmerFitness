@@ -186,22 +186,34 @@ export default function ClientDetailPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting,      setDeleting]      = useState(false);
+  const [assignedProgram, setAssignedProgram] = useState(null);
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj] = await Promise.all([
+        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, cpRows, progRows] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
           readSheet('BodyMetrics').catch(() => []),
           readSheet('ProgressPhotos').catch(() => []),
           readSheet('MacroAdjustments').catch(() => []),
+          readSheet('ClientPrograms').catch(() => []),
+          readSheet('Programs').catch(() => []),
         ]);
 
         const found = clients.find(c => c.ClientID === clientId);
         if (!found) { setError('Client not found.'); return; }
         setClient(found);
+
+        // Find active program assignment
+        const myAssignment = cpRows.find(
+          cp => cp.ClientID === clientId && cp.Status === 'Active'
+        );
+        const myProgram = myAssignment
+          ? progRows.find(p => p.ProgramID === myAssignment.ProgramID) || null
+          : null;
+        setAssignedProgram(myProgram);
 
         setLogs(workoutLogs.filter(l => l.ClientID === clientId).sort((a, b) => {
           const da = parseDate(a.Date), db = parseDate(b.Date);
@@ -506,7 +518,7 @@ export default function ClientDetailPage() {
               {[
                 { label: 'Gender',    value: client.Gender },
                 { label: 'Equipment', value: client.Equipment },
-                { label: 'Program',   value: client.ProgramID || 'None assigned' },
+                { label: 'Program',   value: assignedProgram ? assignedProgram.Name || assignedProgram.ProgramID : 'None assigned' },
                 { label: 'Injuries',  value: client.Injuries  || 'None noted' },
                 { label: 'Notes',     value: client.Notes     || '—' },
               ].map(({ label, value }) => (
