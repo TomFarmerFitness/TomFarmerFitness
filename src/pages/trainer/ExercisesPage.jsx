@@ -35,12 +35,13 @@ function ExerciseFormModal({ initial, onClose, onSave }) {
   const isEdit = !!initial;
   const [form, setForm] = useState({
     name: initial?.Name || '',
-    muscleGroup: initial?.MuscleGroup || '',
-    equipment: initial?.Equipment || '',
+    muscleGroup: initial?.PrimaryMuscle || '',
+    secondaryMuscle: initial?.SecondaryMuscle || '',
+    equipment: initial?.EquipmentNeeded || '',
     category: initial?.Category || '',
     description: initial?.Description || '',
     videoUrl: initial?.VideoURL || '',
-    instructions: initial?.Instructions || '',
+    instructions: initial?.HowToPerform || '',
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -85,19 +86,27 @@ function ExerciseFormModal({ initial, onClose, onSave }) {
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px' }}>
             <div>
-              <label style={labelStyle}>MUSCLE GROUP</label>
+              <label style={labelStyle}>PRIMARY MUSCLE</label>
               <select value={form.muscleGroup} onChange={e => set('muscleGroup', e.target.value)} style={inputStyle}>
                 <option value="">— Select —</option>
                 {MUSCLE_GROUPS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
             <div>
-              <label style={labelStyle}>EQUIPMENT</label>
-              <select value={form.equipment} onChange={e => set('equipment', e.target.value)} style={inputStyle}>
-                <option value="">— Select —</option>
-                {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
+              <label style={labelStyle}>SECONDARY MUSCLE</label>
+              <select value={form.secondaryMuscle} onChange={e => set('secondaryMuscle', e.target.value)} style={inputStyle}>
+                <option value="">— None —</option>
+                {MUSCLE_GROUPS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
+          </div>
+
+          <div>
+            <label style={labelStyle}>EQUIPMENT</label>
+            <select value={form.equipment} onChange={e => set('equipment', e.target.value)} style={inputStyle}>
+              <option value="">— Select —</option>
+              {EQUIPMENT_LIST.map(e => <option key={e} value={e}>{e}</option>)}
+            </select>
           </div>
 
           <div>
@@ -125,7 +134,7 @@ function ExerciseFormModal({ initial, onClose, onSave }) {
           </div>
 
           <div>
-            <label style={labelStyle}>INSTRUCTIONS</label>
+            <label style={labelStyle}>HOW TO PERFORM</label>
             <textarea value={form.instructions} onChange={e => set('instructions', e.target.value)}
               placeholder="Step-by-step cues for proper form"
               rows={3} style={{ ...inputStyle, resize:'vertical', fontFamily:'inherit' }} />
@@ -189,8 +198,9 @@ function ExerciseDetailModal({ ex, onClose, onEdit, onDelete }) {
             <div style={{ color:'#f1f5f9', fontWeight:700, fontSize:'17px',
               whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{ex.Name}</div>
             <div style={{ display:'flex', flexWrap:'wrap', gap:'6px', marginTop:'8px' }}>
-              {pill('Muscle', ex.MuscleGroup)}
-              {pill('Equipment', ex.Equipment)}
+              {pill('Muscle', ex.PrimaryMuscle)}
+              {pill('Secondary', ex.SecondaryMuscle)}
+              {pill('Equipment', ex.EquipmentNeeded)}
               {pill('Category', ex.Category)}
             </div>
           </div>
@@ -204,11 +214,11 @@ function ExerciseDetailModal({ ex, onClose, onEdit, onDelete }) {
               <div style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.6 }}>{ex.Description}</div>
             </div>
           )}
-          {ex.Instructions && (
+          {ex.HowToPerform && (
             <div>
-              <div style={{ color:'#64748b', fontSize:'11px', marginBottom:'4px' }}>INSTRUCTIONS</div>
+              <div style={{ color:'#64748b', fontSize:'11px', marginBottom:'4px' }}>HOW TO PERFORM</div>
               <div style={{ color:'#cbd5e1', fontSize:'14px', lineHeight:1.8,
-                whiteSpace:'pre-line' }}>{ex.Instructions}</div>
+                whiteSpace:'pre-line' }}>{ex.HowToPerform}</div>
             </div>
           )}
           {ex.VideoURL && (
@@ -262,9 +272,9 @@ export default function ExercisesPage() {
 
   const filtered = exercises.filter(ex => {
     const matchSearch = !search || ex.Name?.toLowerCase().includes(search.toLowerCase()) ||
-      ex.MuscleGroup?.toLowerCase().includes(search.toLowerCase());
-    const matchMuscle = muscleFilter === 'All' || ex.MuscleGroup === muscleFilter;
-    const matchEquip  = equipFilter  === 'All' || ex.Equipment  === equipFilter;
+      ex.PrimaryMuscle?.toLowerCase().includes(search.toLowerCase());
+    const matchMuscle = muscleFilter === 'All' || ex.PrimaryMuscle === muscleFilter;
+    const matchEquip  = equipFilter  === 'All' || ex.EquipmentNeeded === equipFilter;
     return matchSearch && matchMuscle && matchEquip;
   });
 
@@ -276,19 +286,21 @@ export default function ExercisesPage() {
     grouped[key].push(ex);
   });
 
-  const handleSave = async ({ id, name, muscleGroup, equipment, category,
+  const handleSave = async ({ id, name, muscleGroup, secondaryMuscle, equipment, category,
     description, videoUrl, instructions }) => {
     const exId = id || generateExId();
     const rowData = {
-      ExerciseID: exId, Name: name, MuscleGroup: muscleGroup,
-      Equipment: equipment, Category: category, Description: description,
-      Instructions: instructions, VideoURL: videoUrl,
+      ExerciseID: exId, Name: name, PrimaryMuscle: muscleGroup,
+      SecondaryMuscle: secondaryMuscle || '', EquipmentNeeded: equipment,
+      Category: category, Description: description,
+      HowToPerform: instructions, VideoURL: videoUrl,
     };
     await callProxy({ action: 'upsertRow', tab: 'Exercises', idColumn: 'ExerciseID', id: exId, row: rowData });
     // Optimistic update
-    const newEx = { ExerciseID: exId, Name: name, MuscleGroup: muscleGroup,
-      Equipment: equipment, Category: category, Description: description,
-      Instructions: instructions, VideoURL: videoUrl };
+    const newEx = { ExerciseID: exId, Name: name, PrimaryMuscle: muscleGroup,
+      SecondaryMuscle: secondaryMuscle || '', EquipmentNeeded: equipment,
+      Category: category, Description: description,
+      HowToPerform: instructions, VideoURL: videoUrl };
     setExercises(prev => id
       ? prev.map(e => e.ExerciseID === id ? newEx : e)
       : [...prev, newEx]);
@@ -414,7 +426,7 @@ export default function ExercisesPage() {
                       {ex.Name}
                     </div>
                     <div style={{ color:'#64748b', fontSize:'12px', marginTop:'2px' }}>
-                      {[ex.MuscleGroup, ex.Equipment].filter(Boolean).join(' · ')}
+                      {[ex.PrimaryMuscle, ex.EquipmentNeeded].filter(Boolean).join(' · ')}
                     </div>
                   </div>
                   {ex.Category && (

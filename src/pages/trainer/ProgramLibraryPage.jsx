@@ -701,7 +701,7 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
           </div>
           <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
             {allExercises
-              .filter(e => e.MuscleGroup === ex.muscleGroup && e.Name !== ex.name)
+              .filter(e => e.PrimaryMuscle === ex.muscleGroup && e.Name !== ex.name)
               .slice(0, 8)
               .map(e => (
                 <button key={e.ExerciseID}
@@ -715,7 +715,7 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
                   {e.Name}
                 </button>
               ))}
-            {allExercises.filter(e => e.MuscleGroup === ex.muscleGroup && e.Name !== ex.name).length === 0 && (
+            {allExercises.filter(e => e.PrimaryMuscle === ex.muscleGroup && e.Name !== ex.name).length === 0 && (
               <span style={{ color:'#475569', fontSize:'12px' }}>No alternatives in same muscle group</span>
             )}
           </div>
@@ -736,14 +736,14 @@ function StepExercises({ days, onDaysChange, allExercises }) {
 
   const filtered = allExercises.filter(e => {
     const matchSearch = !search || e.Name?.toLowerCase().includes(search.toLowerCase());
-    const matchMuscle = muscleFilter === 'All' || e.MuscleGroup === muscleFilter;
+    const matchMuscle = muscleFilter === 'All' || e.PrimaryMuscle === muscleFilter;
     return matchSearch && matchMuscle;
   });
 
   const addExercise = (ex) => {
     const newEx = {
       id: generateId('exrow'), exerciseId: ex.ExerciseID,
-      name: ex.Name, muscleGroup: ex.MuscleGroup || '',
+      name: ex.Name, muscleGroup: ex.PrimaryMuscle || '',
       sets: 3, reps: '10', rest: '60s', notes: '',
     };
     const next = [...days];
@@ -776,7 +776,7 @@ function StepExercises({ days, onDaysChange, allExercises }) {
     onDaysChange(next);
   };
 
-  const uniqueMuscles = ['All', ...new Set(allExercises.map(e => e.MuscleGroup).filter(Boolean))];
+  const uniqueMuscles = ['All', ...new Set(allExercises.map(e => e.PrimaryMuscle).filter(Boolean))];
 
   return (
     <div style={{ display:'flex', gap:'12px', height:'400px' }}>
@@ -1206,41 +1206,4 @@ export default function ProgramLibraryPage() {
       )}
     </div>
   );
-}
-                Create your first program
-              </button>
-            </div>
-          ) : filtered.map(prog => (
-            <ProgramCard key={prog.id} program={prog}
-              clientCount={(assignedMap[prog.id]||[]).length}
-              onEdit={() => setEditTarget(prog)}
-              onCopy={() => handleCopy(prog)}
-              onAssign={() => setAssignTarget(prog)} />
-          ))}
-        </div>
-      </div>
-
-      {/* Modals */}
-      {(createOpen || editTarget) && (
-        <CreateProgramModal
-          initial={editTarget || aiInitial}
-          allExercises={exercises}
-          onClose={() => { setCreateOpen(false); setEditTarget(null); setAIInitial(null); }}
-          onSave={handleSaveProgram} />
-      )}
-      {assignTarget && (
-        <AssignModal program={assignTarget} clients={clients}
-          assignedMap={assignedMap}
-          onClose={() => setAssignTarget(null)}
-          onSave={handleAssign} />
-      )}
-      {generateOpen && (
-        <GenerateAIModal
-          onClose={() => setGenerate(false)}
-
-          onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
-      )}
-    </div>
-  );
-}
 }

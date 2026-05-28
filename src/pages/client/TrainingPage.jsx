@@ -98,8 +98,8 @@ function swapInjuredExercises(exercises, injuryNotes, allExercises) {
     if (!affected.has(mg)) return ex;
     // Prefer Machine > Cable > Bodyweight as safer alternatives
     const alt = allExercises.find(ae =>
-      (ae.MuscleGroup || '') === mg &&
-      ['Machine', 'Cable', 'Bodyweight'].includes(ae.Equipment || '') &&
+      (ae.PrimaryMuscle || '') === mg &&
+      ['Machine', 'Cable', 'Bodyweight'].includes(ae.EquipmentNeeded || '') &&
       (ae.Name || '').toLowerCase() !== (ex.name || '').toLowerCase()
     );
     if (alt) return { ...ex, name: alt.Name, originalName: ex.name, swappedForInjury: true };
