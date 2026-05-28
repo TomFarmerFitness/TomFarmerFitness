@@ -167,7 +167,7 @@ function doPost(e) {
       var focus       = (data.focusAreas || []).join(', ') || 'Full body';
       var notes       = data.notes       || '';
 
-      var prompt = 'You are an expert personal trainer. Generate a complete training program.\n' +
+      var prompt = 'You are an expert personal trainer. Generate a complete training program as compact JSON.\n' +
         'Goal: ' + goal + '\n' +
         'Days per week: ' + daysPerWeek + '\n' +
         'Duration: ' + duration + ' weeks\n' +
@@ -175,15 +175,20 @@ function doPost(e) {
         'Equipment: ' + equipment + '\n' +
         'Focus: ' + focus + '\n' +
         (notes ? 'Notes: ' + notes + '\n' : '') +
-        '\nReturn ONLY valid JSON, no markdown:\n' +
-        '{"name":"...","description":"...","goal":"' + goal + '","daysPerWeek":' + daysPerWeek + ',' +
+        '\nRULES:\n' +
+        '- Return ONLY valid JSON, no markdown, no extra text\n' +
+        '- Maximum 6 exercises per day\n' +
+        '- Keep all string values SHORT (name under 30 chars, notes under 40 chars)\n' +
+        '- Use empty string "" for notes fields\n' +
+        '\nJSON schema (fill in real values):\n' +
+        '{"name":"Program Name","description":"Brief description","goal":"' + goal + '","daysPerWeek":' + daysPerWeek + ',' +
         '"durationWeeks":' + duration + ',"level":"' + level + '","equipment":[],"focusAreas":[],' +
         '"days":[{"dayOrder":1,"dayName":"Push","focusArea":"Chest","exercises":[' +
         '{"name":"Bench Press","muscleGroup":"Chest","sets":4,"reps":"8-10","rest":"90s","notes":""}]}]}';
 
       var payload = {
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 4096,
+        max_tokens: 8192,
         messages: [{ role: 'user', content: prompt }],
       };
 
