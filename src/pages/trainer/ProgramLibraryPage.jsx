@@ -125,7 +125,7 @@ function GoalTag({ goal }) {
 
 // ─── ProgramCard ─────────────────────────────────────────────────────────────
 
-function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate, onAssign }) {
+function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate, onAssign, onDelete }) {
   return (
     <div style={{
       background: '#1e293b', borderRadius: 14, padding: '20px',
@@ -146,6 +146,11 @@ function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate,
             {program.name || 'Untitled Program'}
           </div>
           <GoalTag goal={program.goal} />
+          {program.createdAt && (
+            <div style={{ fontSize:10, color:'#475569', marginTop:4 }}>
+              Created {new Date(program.createdAt + 'T12:00:00').toLocaleDateString('en-AU',{day:'numeric',month:'short',year:'numeric'})}
+            </div>
+          )}
         </div>
       </div>
 
@@ -202,6 +207,19 @@ function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate,
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = '#64748b'; }}
         >
           ⧉ Copy
+        </button>
+        <button
+          onClick={e => { e.stopPropagation(); onDelete(); }}
+          style={{
+            padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)',
+            background: 'transparent', color: '#ef4444',
+            fontSize: 13, cursor: 'pointer', transition: 'all 0.12s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          title="Delete program"
+        >
+          🗑
         </button>
       </div>
     </div>
@@ -1157,6 +1175,13 @@ export default function ProgramLibraryPage() {
     await fetchData(); // refresh
   };
 
+  const handleDeleteProgram = async (progId) => {
+    if (!window.confirm('Delete this program? This cannot be undone.')) return;
+    await deleteSheetRowsWhere('Programs', 'ProgramID', progId);
+    await deleteSheetRowsWhere('ClientPrograms', 'ProgramID', progId);
+    await fetchData();
+  };
+
   // AI generated program — opens in create modal pre-filled
   const handleAIGenerated = (program) => {
     setAIInitial({
@@ -1246,6 +1271,7 @@ export default function ProgramLibraryPage() {
           ) : filtered.map(prog => (
             <ProgramCard key={prog.id} program={prog}
               clientCount={(assignedMap[prog.id]||[]).length}
+              onDelete={() => handleDeleteProgram(prog.id)}
               onEdit={() => setEditTarget(prog)}
               onCopy={() => handleCopy(prog)}
               onAssign={() => setAssignTarget(prog)} />
