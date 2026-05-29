@@ -54,8 +54,8 @@ function parseRows(rawValues) {
 }
 
 /**
- * Read a sheet tab.  Returns fresh data when available; otherwise
- * serves cached data (up to CACHE_TTL old).  On network failure,
+ * Read a sheet tab. Returns fresh data when available; otherwise
+ * serves cached data (up to CACHE_TTL old). On network failure,
  * falls back to any cached data (however old) and sets the stale flag.
  */
 export async function readSheet(tabName) {
@@ -80,12 +80,12 @@ export async function readSheet(tabName) {
     writeCache(tabName, data);
     return data;
   } catch (err) {
-    // Network / API failure — serve stale cache if available
+    // Network / API failure -- serve stale cache if available
     if (stale) {
       markStale();
       return stale;
     }
-    throw err; // no cache at all — propagate
+    throw err; // no cache at all -- propagate
   }
 }
 
@@ -109,7 +109,7 @@ async function scriptPost(payload) {
     method: 'POST',
     redirect: 'follow',
     body: JSON.stringify(payload),
-    // No Content-Type header — avoids CORS preflight for cross-origin requests
+    // No Content-Type header -- avoids CORS preflight for cross-origin requests
   });
   if (!res.ok) throw new Error(`Apps Script HTTP ${res.status}`);
   const data = await res.json();
@@ -121,7 +121,7 @@ async function scriptPost(payload) {
 
 /**
  * Insert or update a row identified by idColumn === id.
- * Clears the sheet's cache entry so the next read fetches fresh data.
+ * Clears the sheet cache entry so the next read fetches fresh data.
  */
 export async function upsertRow(tab, idColumn, id, row) {
   await scriptPost({ action: 'upsertRow', tab, idColumn, id, row });
