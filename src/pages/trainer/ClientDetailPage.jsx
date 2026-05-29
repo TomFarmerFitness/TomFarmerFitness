@@ -161,6 +161,68 @@ function TrainerPhotoViewer({ photo, onClose }) {
 
 // ─── ClientDetailPage ─────────────────────────────────────────────────────────
 
+// ─── WeeklyVolumePanel ────────────────────────────────────────────────────────
+const VOLUME_MUSCLE_ORDER = ['Chest','Back','Shoulders','Arms','Legs','Glutes','Core'];
+const VOLUME_COLORS = {
+  Chest:'#3b82f6', Back:'#8b5cf6', Shoulders:'#f59e0b',
+  Arms:'#ec4899', Legs:'#22c55e', Glutes:'#f97316', Core:'#14b8a6',
+};
+
+function computeWeeklyVolume(programDays) {
+  const counts = {};
+  (programDays || []).forEach(day => {
+    let exList = [];
+    try { exList = typeof day.exercises === 'string' ? JSON.parse(day.exercises) : (day.exercises || []); } catch {}
+    exList.forEach(ex => {
+      const muscle = ex.muscleGroup || ex.primaryMuscle || ex.PrimaryMuscle || 'Other';
+      const sets   = parseInt(ex.sets) || 0;
+      counts[muscle] = (counts[muscle] || 0) + sets;
+    });
+  });
+  return counts;
+}
+
+function WeeklyVolumePanel({ program }) {
+  if (!program?.DaysJSON) return null;
+  let days = [];
+  try { days = JSON.parse(program.DaysJSON); } catch { return null; }
+  const volume = computeWeeklyVolume(days);
+  const hasData = Object.values(volume).some(v => v > 0);
+  if (!hasData) return null;
+  const TARGET_MIN = 10, TARGET_MAX = 20;
+  return (
+    <div style={{ background:'rgba(255,255,255,0.02)', borderRadius:10, padding:'14px 16px',
+      border:'1px solid rgba(255,255,255,0.05)', marginBottom:16 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ color:'#e2e8f0', fontWeight:600, fontSize:13 }}>Weekly Volume</div>
+        <div style={{ color:'#475569', fontSize:11 }}>Target: 10–20 sets / muscle</div>
+      </div>
+      {VOLUME_MUSCLE_ORDER.filter(m => (volume[m] || 0) > 0).map(muscle => {
+        const sets = volume[muscle] || 0;
+        const pct  = Math.min((sets / TARGET_MAX) * 100, 100);
+        const color = VOLUME_COLORS[muscle] || '#94a3b8';
+        const status = sets < TARGET_MIN ? 'under' : sets > TARGET_MAX ? 'over' : 'ok';
+        return (
+          <div key={muscle} style={{ marginBottom:8 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+              <span style={{ fontSize:12, color:'#94a3b8' }}>{muscle}</span>
+              <span style={{ fontSize:12, fontWeight:600,
+                color: status==='ok'?'#22c55e':status==='under'?'#f59e0b':'#ef4444' }}>
+                {sets} sets{status==='under'?' ↑':status==='over'?' ⚠':' ✓'}
+              </span>
+            </div>
+            <div style={{ height:5, background:'rgba(255,255,255,0.07)', borderRadius:99, overflow:'hidden' }}>
+              <div style={{ height:'100%', width:`${pct}%`, borderRadius:99,
+                background:status==='ok'?color:status==='under'?'#f59e0b':'#ef4444',
+                transition:'width 0.5s ease' }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ClientDetailPage() {
   const { clientId } = useParams();
   const navigate     = useNavigate();
@@ -529,6 +591,9 @@ export default function ClientDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* Weekly volume */}
+          {assignedProgram && <WeeklyVolumePanel program={assignedProgram} />}
 
           {/* Recent workout log */}
           <div style={cardStyle}>

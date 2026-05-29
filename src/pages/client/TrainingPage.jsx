@@ -34,7 +34,16 @@ function getWeekDays() {
   });
 }
 
-function getSessionForDay(sessions, weekIdx, daysPerWeek) {
+function getSessionForDay(sessions, weekIdx, daysPerWeek, trainingDaysSet) {
+  // If specific training days assigned, use those
+  if (trainingDaysSet && trainingDaysSet.size > 0) {
+    const dayName = DAY_NAMES[weekIdx];
+    if (!trainingDaysSet.has(dayName)) return null;
+    const orderedDays = DAY_NAMES.filter(d => trainingDaysSet.has(d));
+    const pos = orderedDays.indexOf(dayName);
+    if (pos === -1) return null;
+    return [...sessions].sort((a,b)=>(parseInt(a.DayOrder)||0)-(parseInt(b.DayOrder)||0))[pos] || null;
+  }
   const byDow = sessions.find(s => s.DayOfWeek && DOW_MAP[s.DayOfWeek] === weekIdx);
   if (byDow) return byDow;
   const schedule = DEFAULT_SCHEDULES[Math.min(Math.max(parseInt(daysPerWeek)||3,1),7)] || DEFAULT_SCHEDULES[3];
@@ -197,7 +206,7 @@ function StatusDot({ status, pulse=false }) {
 }
 
 // ─── Week strip ───────────────────────────────────────────────────────────────
-function WeekStrip({ weekDays, selectedDate, sessions, workoutLogs, daysPerWeek, onSelect }) {
+function WeekStrip({ weekDays, selectedDate, sessions, workoutLogs, daysPerWeek, trainingDays, onSelect }) {
   return (
     <div style={{
       display:'flex',gap:'5px',overflowX:'auto',marginBottom:'14px',
@@ -205,7 +214,7 @@ function WeekStrip({ weekDays, selectedDate, sessions, workoutLogs, daysPerWeek,
     }}>
       <style>{`div::-webkit-scrollbar{display:none}`}</style>
       {weekDays.map((day, i) => {
-        const session    = getSessionForDay(sessions, i, daysPerWeek);
+        const session    = getSessionForDay(sessions, i, daysPerWeek, trainingDays);
         const log        = workoutLogs.find(l=>(l.Date||'').slice(0,10)===day.date);
         const isTraining = !!session;
         const isSelected = day.date === selectedDate;
@@ -1186,6 +1195,84 @@ function WorkoutDayCard({ session, log, date, actualDate, onActualDateChange, on
   );
 }
 
+
+// ─── WeeklyVolumePanel ───────────────────────────────────────────────────────
+const MUSCLE_ORDER = ['Chest','Back','Shoulders','Arms','Legs','Glutes','Core'];
+const VOLUME_COLORS = {
+  Chest:'#3b82f6', Back:'#8b5cf6', Shoulders:'#f59e0b',
+  Arms:'#ec4899', Legs:'#22c55e', Glutes:'#f97316', Core:'#14b8a6',
+};
+
+function computeWeeklyVolume(programDays) {
+  // programDays = array of { exercises: [{name, sets, muscleGroup, ...}] }
+  const counts = {};
+  (programDays || []).forEach(day => {
+    let exList = [];
+    try { exList = typeof day.exercises === 'string' ? JSON.parse(day.exercises) : (day.exercises || []); } catch {}
+    exList.forEach(ex => {
+      const muscle = ex.muscleGroup || ex.primaryMuscle || ex.PrimaryMuscle || 'Other';
+      const sets   = parseInt(ex.sets) || 0;
+      counts[muscle] = (counts[muscle] || 0) + sets;
+    });
+  });
+  return counts;
+}
+
+function WeeklyVolumePanel({ programDays }) {
+  if (!programDays || programDays.length === 0) return null;
+  const volume = computeWeeklyVolume(programDays);
+  const hasData = Object.values(volume).some(v => v > 0);
+  if (!hasData) return null;
+
+  const TARGET_MIN = 10;
+  const TARGET_MAX = 20;
+
+  return (
+    <div style={{
+      background: '#1e293b', borderRadius: 14, padding: '16px 18px',
+      border: '1px solid rgba(255,255,255,0.06)', marginBottom: 14,
+    }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+        <div style={{ color:'#f1f5f9', fontWeight:700, fontSize:14 }}>Weekly Volume</div>
+        <div style={{ color:'#64748b', fontSize:11 }}>Target: 10–20 sets / muscle</div>
+      </div>
+      {MUSCLE_ORDER.filter(m => (volume[m] || 0) > 0).map(muscle => {
+        const sets = volume[muscle] || 0;
+        const pct  = Math.min((sets / TARGET_MAX) * 100, 100);
+        const color = VOLUME_COLORS[muscle] || '#94a3b8';
+        const status = sets < TARGET_MIN ? 'under' : sets > TARGET_MAX ? 'over' : 'ok';
+        return (
+          <div key={muscle} style={{ marginBottom:8 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:3 }}>
+              <span style={{ fontSize:12, color:'#94a3b8' }}>{muscle}</span>
+              <span style={{ fontSize:12, fontWeight:600,
+                color: status === 'ok' ? '#22c55e' : status === 'under' ? '#f59e0b' : '#ef4444' }}>
+                {sets} sets {status === 'under' ? '↑' : status === 'over' ? '⚠' : '✓'}
+              </span>
+            </div>
+            <div style={{ height:6, background:'rgba(255,255,255,0.07)', borderRadius:99, overflow:'hidden' }}>
+              <div style={{
+                height:'100%', width:`${pct}%`, borderRadius:99,
+                background: status === 'ok' ? color : status === 'under' ? '#f59e0b' : '#ef4444',
+                transition:'width 0.5s ease',
+              }} />
+            </div>
+          </div>
+        );
+      })}
+      <div style={{ display:'flex', gap:12, marginTop:10, paddingTop:10,
+        borderTop:'1px solid rgba(255,255,255,0.05)' }}>
+        {[['✓','On track','#22c55e'],['↑','Under target','#f59e0b'],['⚠','Over target','#ef4444']].map(([icon,label,c])=>(
+          <div key={label} style={{ display:'flex', alignItems:'center', gap:4 }}>
+            <span style={{ color:c, fontSize:11 }}>{icon}</span>
+            <span style={{ color:'#64748b', fontSize:10 }}>{label}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main TrainingPage ─────────────────────────────────────────────────────────
 export default function TrainingPage() {
   const { user } = useAuth();
@@ -1198,6 +1285,7 @@ export default function TrainingPage() {
   const [workoutLogs,  setWorkoutLogs]  = useState([]);
   const [clientProfile,setClientProfile]= useState(null);
   const [activeProgram,setActiveProgram]= useState(null);
+  const [trainingDays, setTrainingDays]  = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState(null);
@@ -1211,7 +1299,7 @@ export default function TrainingPage() {
   const [allExercises,     setAllExercises]     = useState([]);
 
   const weekDays     = getWeekDays();
-  const daysPerWeek  = parseInt(activeProgram?.DaysPerWeek) || parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
+  const daysPerWeek  = trainingDays?.size || parseInt(activeProgram?.DaysPerWeek) || parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
 
   const fetchData = useCallback(async () => {
     if (!user?.clientID) return;
@@ -1237,6 +1325,10 @@ export default function TrainingPage() {
         ? progRows.find(p => p.ProgramID === myAssignment.ProgramID) || null
         : null;
       setActiveProgram(myProgram);
+      const assignedDays = myAssignment?.TrainingDays
+        ? new Set(myAssignment.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean))
+        : null;
+      setTrainingDays(assignedDays);
 
       // Transform DaysJSON into session-like objects WorkoutDayCard expects
       let mySessions = [];
@@ -1263,10 +1355,10 @@ export default function TrainingPage() {
 
   // Derived
   const selectedDayIdx   = weekDays.findIndex(d=>d.date===selectedDate);
-  const selectedSession  = selectedDayIdx >= 0 ? getSessionForDay(sessions, selectedDayIdx, daysPerWeek) : null;
+  const selectedSession  = selectedDayIdx >= 0 ? getSessionForDay(sessions, selectedDayIdx, daysPerWeek, trainingDays) : null;
   const selectedLog      = workoutLogs.find(l=>(l.Date||'').slice(0,10)===selectedDate && l.Status==='Completed');
   const weekStats        = computeWeekStats(workoutLogs, weekDays);
-  const scheduledThisWeek= weekDays.filter((_,i)=>!!getSessionForDay(sessions,i,daysPerWeek)).length;
+  const scheduledThisWeek= weekDays.filter((_,i)=>!!getSessionForDay(sessions,i,daysPerWeek,trainingDays)).length;
 
   // Init active sets from exercises
   const initActiveSets = (exs) => {
@@ -1483,6 +1575,7 @@ export default function TrainingPage() {
           sessions={sessions}
           workoutLogs={workoutLogs}
           daysPerWeek={daysPerWeek}
+          trainingDays={trainingDays}
           onSelect={(date, _sess) => {
             setSelectedDate(date);
             setActualDate(date);

@@ -143,16 +143,16 @@ function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate,
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 16, fontWeight: 700, color: '#f1f5f9', marginBottom: 6, lineHeight: 1.3,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {program.Name || 'Untitled Program'}
+            {program.name || 'Untitled Program'}
           </div>
-          <GoalTag goal={program.Goal} />
+          <GoalTag goal={program.goal} />
         </div>
       </div>
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
         {[
-          { icon: '📅', label: 'Days/week', value: program.DaysPerWeek || '—' },
+          { icon: '📅', label: 'Days/week', value: program.daysPerWeek || '—' },
           { icon: '💪', label: 'Exercises', value: exerciseCount || 0 },
           { icon: '👥', label: 'Clients',   value: clientCount || 0 },
         ].map(({ icon, label, value }) => (
@@ -168,10 +168,10 @@ function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate,
       </div>
 
       {/* Description */}
-      {program.Description && (
+      {program.description && (
         <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.5,
           overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
-          {program.Description}
+          {program.description}
         </div>
       )}
 
@@ -211,19 +211,26 @@ function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate,
 
 // ─── AssignModal ──────────────────────────────────────────────────────────────
 function AssignModal({ program, clients, assignedMap, onClose, onSave }) {
+  const DAY_LABELS = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
   const already = assignedMap[program.id] || [];
-  const [selected, setSelected] = useState(new Set(already));
-  const [saving, setSaving] = useState(false);
+  const [selected,     setSelected]     = useState(new Set(already));
+  const [trainingDays, setTrainingDays] = useState(new Set(['Mon','Tue','Wed','Thu','Fri']));
+  const [saving,       setSaving]       = useState(false);
 
   const toggle = id => setSelected(s => {
     const n = new Set(s);
     n.has(id) ? n.delete(id) : n.add(id);
     return n;
   });
+  const toggleDay = d => setTrainingDays(s => {
+    const n = new Set(s);
+    n.has(d) ? n.delete(d) : n.add(d);
+    return n;
+  });
 
   const handleSave = async () => {
     setSaving(true);
-    try { await onSave(program.id, [...selected]); onClose(); }
+    try { await onSave(program.id, [...selected], [...trainingDays]); onClose(); }
     catch { setSaving(false); }
   };
 
@@ -279,6 +286,26 @@ function AssignModal({ program, clients, assignedMap, onClose, onSave }) {
               </button>
             );
           })}
+        </div>
+
+        {/* Training days picker */}
+        <div style={{ padding:'12px 20px', borderTop:'1px solid rgba(255,255,255,0.08)' }}>
+          <div style={{ color:'#64748b', fontSize:'11px', textTransform:'uppercase',
+            letterSpacing:'0.5px', marginBottom:'8px' }}>Training Days</div>
+          <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+            {DAY_LABELS.map(d => {
+              const on = trainingDays.has(d);
+              return (
+                <button key={d} onClick={() => toggleDay(d)} style={{
+                  padding:'5px 10px', borderRadius:'8px', fontSize:'12px', fontWeight:600,
+                  cursor:'pointer', border:'none',
+                  background: on ? '#f97316' : 'rgba(255,255,255,0.06)',
+                  color: on ? '#fff' : '#64748b',
+                  transition:'all 0.12s',
+                }}>{d}</button>
+              );
+            })}
+          </div>
         </div>
 
         <div style={{ padding:'16px 20px', borderTop:'1px solid rgba(255,255,255,0.08)',
@@ -1006,6 +1033,7 @@ export default function ProgramLibraryPage() {
   const [exercises, setExercises]     = useState([]);
   const [clientPrograms, setCPs]      = useState([]);
   const [goalFilter, setGoalFilter]   = useState('All');
+  const [searchQuery,  setSearchQuery]  = useState('');
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
 
@@ -1059,8 +1087,15 @@ export default function ProgramLibraryPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const filtered = goalFilter === 'All'
-    ? programs : programs.filter(p => p.goal === goalFilter);
+  const filtered = programs.filter(p => {
+    const matchGoal = goalFilter === 'All' || p.goal === goalFilter;
+    const q = searchQuery.trim().toLowerCase();
+    const matchSearch = !q
+      || (p.name || '').toLowerCase().includes(q)
+      || (p.goal || '').toLowerCase().includes(q)
+      || (p.description || '').toLowerCase().includes(q);
+    return matchGoal && matchSearch;
+  });
 
   // Save program (create or edit)
   const handleSaveProgram = async ({ id, name, description, goal, daysPerWeek,
@@ -1100,14 +1135,16 @@ export default function ProgramLibraryPage() {
   };
 
   // Assign to clients
-  const handleAssign = async (programId, clientIds) => {
+  const handleAssign = async (programId, clientIds, trainingDays) => {
     const current = assignedMap[programId] || [];
+    const daysStr = (trainingDays || []).join(',');
     // Add new assignments
     for (const cid of clientIds) {
       if (!current.includes(cid)) {
         await appendToSheet('ClientPrograms', {
           ClientProgramID: generateId('cp'), ClientID: cid,
           ProgramID: programId, AssignedAt: todayISO(), Status: 'Active',
+          TrainingDays: daysStr,
         });
       }
     }
@@ -1166,7 +1203,21 @@ export default function ProgramLibraryPage() {
               </button>
             </div>
           </div>
-          <FilterBar goalFilter={goalFilter} onFilterChange={setGoalFilter} />
+          {/* Search */}
+          <input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Search programs…"
+            style={{
+              width: '100%', boxSizing: 'border-box',
+              padding: '9px 14px', borderRadius: '10px',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              color: '#f1f5f9', fontSize: '14px', outline: 'none',
+              marginBottom: '10px',
+            }}
+          />
+          <FilterBar active={goalFilter} onChange={setGoalFilter} />
         </div>
 
         {/* Program list */}
@@ -1184,7 +1235,7 @@ export default function ProgramLibraryPage() {
               justifyContent:'center', height:'200px', gap:'12px', color:'#64748b' }}>
               <div style={{ fontSize:'36px' }}>📋</div>
               <div style={{ fontSize:'14px', textAlign:'center' }}>
-                {goalFilter !== 'All' ? `No ${goalFilter} programs yet` : 'No programs yet'}
+                {searchQuery ? `No programs matching "${searchQuery}"` : goalFilter !== 'All' ? `No ${goalFilter} programs yet` : 'No programs yet'}
               </div>
               <button onClick={() => { setAIInitial(null); setCreateOpen(true); }}
                 style={{ padding:'10px 20px', background:'#f97316', border:'none',
