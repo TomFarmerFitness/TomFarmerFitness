@@ -478,7 +478,7 @@ function GenerateAIModal({ onClose, onGenerated }) {
                 { label:'CLIENT GOALS', val:clientGoals, set:setClientGoals,
                   placeholder:'e.g. Build muscle, lose fat, improve fitness for sport…' },
                 { label:'INJURIES / LIMITATIONS', val:clientLimitations, set:setClientLimitations,
-                  placeholder:'e.g. Bad lower back, knee surgery, can't overhead press…' },
+                  placeholder:"e.g. Bad lower back, knee surgery, can't overhead press..." },
                 { label:'FOCUS AREAS', val:clientFocusAreas, set:setClientFocusAreas,
                   placeholder:'e.g. Upper body strength, glute development, core stability…' },
                 { label:'ADDITIONAL NOTES', val:clientNotes, set:setClientNotes,
