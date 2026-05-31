@@ -126,6 +126,7 @@ function GoalTag({ goal }) {
 // ─── ProgramCard ─────────────────────────────────────────────────────────────
 
 function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate, onAssign, onDelete }) {
+  const [confirmDel, setConfirmDel] = React.useState(false);
   return (
     <div style={{
       background: '#1e293b', borderRadius: 14, padding: '20px',
@@ -208,19 +209,31 @@ function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate,
         >
           ⧉ Copy
         </button>
-        <button
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          style={{
-            padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)',
-            background: 'transparent', color: '#ef4444',
-            fontSize: 13, cursor: 'pointer', transition: 'all 0.12s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
-          title="Delete program"
-        >
-          🗑
-        </button>
+        {confirmDel ? (
+          <div style={{ display:'flex', gap:4, alignItems:'center' }} onClick={e=>e.stopPropagation()}>
+            <span style={{ fontSize:11, color:'#ef4444' }}>Delete?</span>
+            <button onClick={e=>{e.stopPropagation();onDelete();}} style={{
+              padding:'5px 8px', borderRadius:6, border:'none',
+              background:'#ef4444', color:'#fff', fontSize:12, cursor:'pointer', fontWeight:600 }}>Yes</button>
+            <button onClick={e=>{e.stopPropagation();setConfirmDel(false);}} style={{
+              padding:'5px 8px', borderRadius:6, border:'1px solid rgba(255,255,255,0.1)',
+              background:'transparent', color:'#94a3b8', fontSize:12, cursor:'pointer' }}>No</button>
+          </div>
+        ) : (
+          <button
+            onClick={e => { e.stopPropagation(); setConfirmDel(true); }}
+            style={{
+              padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(239,68,68,0.2)',
+              background: 'transparent', color: '#ef4444',
+              fontSize: 13, cursor: 'pointer', transition: 'all 0.12s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+            title="Delete program"
+          >
+            🗑
+          </button>
+        )}
       </div>
     </div>
   );
@@ -1176,7 +1189,6 @@ export default function ProgramLibraryPage() {
   };
 
   const handleDeleteProgram = async (progId) => {
-    if (!window.confirm('Delete this program? This cannot be undone.')) return;
     await deleteSheetRowsWhere('Programs', 'ProgramID', progId);
     await deleteSheetRowsWhere('ClientPrograms', 'ProgramID', progId);
     await fetchData();
