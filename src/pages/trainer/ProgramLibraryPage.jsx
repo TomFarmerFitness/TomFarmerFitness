@@ -126,7 +126,7 @@ function GoalTag({ goal }) {
 // ─── ProgramCard ─────────────────────────────────────────────────────────────
 
 function ProgramCard({ program, exerciseCount, clientCount, onEdit, onDuplicate, onAssign, onDelete }) {
-  const [confirmDel, setConfirmDel] = React.useState(false);
+  const [confirmDel, setConfirmDel] = useState(false);
   return (
     <div style={{
       background: '#1e293b', borderRadius: 14, padding: '20px',
