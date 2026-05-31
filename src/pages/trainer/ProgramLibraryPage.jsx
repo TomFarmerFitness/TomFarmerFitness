@@ -372,9 +372,38 @@ function GenerateAIModal({ onClose, onGenerated }) {
   const [notes, setNotes]                 = useState('');
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState('');
+  const [clientGoals,       setClientGoals]       = useState('');
+  const [clientLimitations, setClientLimitations] = useState('');
+  const [clientFocusAreas,  setClientFocusAreas]  = useState('');
+  const [clientNotes,       setClientNotes]       = useState('');
+  const [suggesting,        setSuggesting]        = useState(false);
 
   const toggleArr = (arr, setArr, val) =>
     setArr(a => a.includes(val) ? a.filter(x => x !== val) : [...a, val]);
+
+  const handleSuggest = async () => {
+    const desc = [clientGoals, clientLimitations, clientFocusAreas, clientNotes].filter(Boolean).join(' | ');
+    if (!desc.trim()) return;
+    setSuggesting(true); setError('');
+    try {
+      const res = await fetch(config.APPS_SCRIPT_URL, {
+        method:'POST', redirect:'follow',
+        body: JSON.stringify({ action:'suggestSettings', description: desc }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'Suggestion failed');
+      const s = data.settings;
+      if (s.goal)            setGoal(s.goal);
+      if (s.daysPerWeek)     setDays(+s.daysPerWeek);
+      if (s.durationWeeks)   setDuration(+s.durationWeeks);
+      if (s.sessionDuration) setSession(+s.sessionDuration);
+      if (s.trainingType)    setTrainingType(s.trainingType);
+      if (s.level)           setLevel(s.level);
+      if (s.equipment?.length)   setEquipment(s.equipment);
+      if (s.focusAreas?.length)  setFocus(s.focusAreas);
+    } catch(e) { setError('Could not suggest settings: ' + e.message); }
+    finally { setSuggesting(false); }
+  };
 
   const handleGenerate = async () => {
     setLoading(true); setError('');
@@ -385,6 +414,7 @@ function GenerateAIModal({ onClose, onGenerated }) {
           action:'generateProgram', goal, daysPerWeek, durationWeeks: duration,
           sessionDuration, trainingType,
           level, equipment, focusAreas: focus, notes,
+          clientGoals, clientLimitations, clientFocusAreas, clientNotes,
         }),
         // No Content-Type — avoids CORS preflight
       });
@@ -425,6 +455,53 @@ function GenerateAIModal({ onClose, onGenerated }) {
         </div>
 
         <div style={{ overflowY:'auto', flex:1, padding:'20px', display:'flex', flexDirection:'column', gap:'18px' }}>
+
+
+          {/* ── Client Profile ── */}
+          <div style={{ background:'rgba(249,115,22,0.05)', border:'1px solid rgba(249,115,22,0.15)',
+            borderRadius:'12px', padding:'16px', display:'flex', flexDirection:'column', gap:'12px' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div style={{ color:'#f97316', fontWeight:700, fontSize:'13px' }}>👤 Client Profile</div>
+              <button onClick={handleSuggest} disabled={suggesting ||
+                (!clientGoals && !clientLimitations && !clientFocusAreas && !clientNotes)}
+                style={{
+                  padding:'6px 12px', borderRadius:'8px', fontSize:'12px', fontWeight:600,
+                  cursor: suggesting ? 'default' : 'pointer', border:'none',
+                  background: suggesting ? 'rgba(249,115,22,0.2)' : '#f97316',
+                  color: suggesting ? '#f97316' : '#fff', transition:'all 0.15s',
+                }}>
+                {suggesting ? '⏳ Suggesting…' : '✨ Suggest Settings'}
+              </button>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+              {[
+                { label:'CLIENT GOALS', val:clientGoals, set:setClientGoals,
+                  placeholder:'e.g. Build muscle, lose fat, improve fitness for sport…' },
+                { label:'INJURIES / LIMITATIONS', val:clientLimitations, set:setClientLimitations,
+                  placeholder:'e.g. Bad lower back, knee surgery, can't overhead press…' },
+                { label:'FOCUS AREAS', val:clientFocusAreas, set:setClientFocusAreas,
+                  placeholder:'e.g. Upper body strength, glute development, core stability…' },
+                { label:'ADDITIONAL NOTES', val:clientNotes, set:setClientNotes,
+                  placeholder:'e.g. Trains at home, prefers compound movements, time-poor…' },
+              ].map(({ label, val, set, placeholder }) => (
+                <div key={label}>
+                  <div style={{ color:'#94a3b8', fontSize:'10px', letterSpacing:'0.05em',
+                    marginBottom:'5px', textTransform:'uppercase' }}>{label}</div>
+                  <textarea value={val} onChange={e => set(e.target.value)}
+                    placeholder={placeholder} rows={2}
+                    style={{ width:'100%', boxSizing:'border-box', background:'rgba(255,255,255,0.05)',
+                      border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
+                      color:'#f1f5f9', fontSize:'12px', padding:'8px 10px',
+                      resize:'vertical', fontFamily:'inherit', outline:'none' }} />
+                </div>
+              ))}
+            </div>
+            <div style={{ color:'#64748b', fontSize:'11px' }}>
+              Fill in the client details above and click <strong style={{color:'#f97316'}}>✨ Suggest Settings</strong> to auto-fill the program settings below, then adjust as needed.
+            </div>
+          </div>
+
+          <div style={{ borderTop:'1px solid rgba(255,255,255,0.06)', margin:'0 -20px', padding:'0 20px' }} />
 
           <div>
             <div style={labelStyle}>GOAL</div>

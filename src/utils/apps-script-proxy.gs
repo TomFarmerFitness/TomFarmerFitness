@@ -167,7 +167,20 @@ function doPost(e) {
       var level           = data.level           || 'Intermediate';
       var equipment       = (data.equipment      || []).join(', ') || 'Any';
       var focus           = (data.focusAreas     || []).join(', ') || 'Full body';
-      var notes           = data.notes           || '';
+      var notes             = data.notes             || '';
+      var clientGoals       = data.clientGoals       || '';
+      var clientLimitations = data.clientLimitations || '';
+      var clientFocusAreas  = data.clientFocusAreas  || '';
+      var clientNotes       = data.clientNotes       || '';
+
+      var clientSection = '';
+      if (clientGoals || clientLimitations || clientFocusAreas || clientNotes) {
+        clientSection = '\nCLIENT PROFILE:\n' +
+          (clientGoals       ? 'Goals: '        + clientGoals       + '\n' : '') +
+          (clientLimitations ? 'Limitations: '  + clientLimitations + '\n' : '') +
+          (clientFocusAreas  ? 'Focus Areas: '  + clientFocusAreas  + '\n' : '') +
+          (clientNotes       ? 'Notes: '        + clientNotes       + '\n' : '');
+      }
 
       var prompt = 'You are an expert personal trainer. Generate a complete training program as compact JSON.\n' +
         'Goal: ' + goal + '\n' +
@@ -178,7 +191,8 @@ function doPost(e) {
         'Level: ' + level + '\n' +
         'Equipment: ' + equipment + '\n' +
         'Focus: ' + focus + '\n' +
-        (notes ? 'Notes: ' + notes + '\n' : '') +
+        (notes ? 'Additional Notes: ' + notes + '\n' : '') +
+        clientSection +
         '\nRULES:\n' +
         '- Return ONLY valid JSON, no markdown, no extra text\n' +
         '- Maximum 6 exercises per day\n' +
@@ -519,6 +533,55 @@ function uploadPhotoToDrive(clientId, clientName, base64Data, mimeType, fileName
 // ─────────────────────────────────────────────────────────────────────────────
 //  Utilities
 // ─────────────────────────────────────────────────────────────────────────────
+
+    // ── Suggest program settings from client description ─────────────────────
+    if (data.action === 'suggestSettings') {
+      var apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
+      if (!apiKey) throw new Error('CLAUDE_API_KEY not set in Script Properties');
+
+      var description = data.description || '';
+      var suggestPrompt = 'You are an expert personal trainer. Based on this client description, suggest optimal program settings.\n' +
+        'Client description: ' + description + '\n\n' +
+        'Return ONLY valid JSON with these exact fields (no markdown, no extra text):\n' +
+        '{\n' +
+        '  "goal": "Weight Loss|Muscle Gain|Strength|General Fitness",\n' +
+        '  "daysPerWeek": 3,\n' +
+        '  "durationWeeks": 8,\n' +
+        '  "sessionDuration": 60,\n' +
+        '  "trainingType": "HIIT|Strength and Conditioning|Hypertrophy|Mobility",\n' +
+        '  "level": "Beginner|Intermediate|Advanced",\n' +
+        '  "equipment": ["Dumbbells","Barbell"],\n' +
+        '  "focusAreas": ["Chest","Back"]\n' +
+        '}\n\n' +
+        'Equipment options: Barbell, Dumbbells, Cables, Machines, Kettlebells, Bodyweight, Resistance Bands, TRX, Smith Machine\n' +
+        'Focus area options: Full Body, Upper Body, Lower Body, Push Day, Pull Day, Legs, Chest and Triceps, Back and Biceps, Shoulders, Arms, Core\n' +
+        'Pick the most appropriate values based on the description.';
+
+      var suggestPayload = {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: suggestPrompt }],
+      };
+
+      var suggestResp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method: 'post',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        payload: JSON.stringify(suggestPayload),
+        muteHttpExceptions: true,
+      });
+
+      var suggestResult = JSON.parse(suggestResp.getContentText());
+      if (suggestResult.error) throw new Error(suggestResult.error.message);
+      var suggestText = suggestResult.content[0].text.trim();
+      suggestText = suggestText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+      var settings = JSON.parse(suggestText);
+      return ok({ settings: settings });
+    }
+
 
 function doGet() {
   return ContentService
