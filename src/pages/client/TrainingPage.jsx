@@ -139,6 +139,31 @@ function computeWeekStats(workoutLogs, weekDays) {
   return { totalSets, totalReps, totalVolume: Math.round(totalVolume), completedCount: weekLogs.length };
 }
 
+function computeProgression(exercises, completedSets) {
+  const updates = [];
+  exercises.forEach(ex => {
+    const exSets = completedSets[ex.name] || [];
+    if (exSets.length === 0) return;
+    if (!exSets.every(s => s.done)) return;
+    const targetReps = parseInt(String(ex.reps || '0').split('-')[0]) || 0;
+    if (targetReps === 0) return;
+    if (!exSets.every(s => (parseInt(s.reps) || 0) >= targetReps)) return;
+    const currentWeight = parseFloat(ex.weight) || 0;
+    const isCompound = /bench|squat|deadlift|row|press|pull|dip|lunge/i.test(ex.name);
+    if (currentWeight > 0) {
+      const inc = isCompound ? 2.5 : 1.25;
+      updates.push({ exerciseName: ex.name, muscleGroup: ex.muscleGroup||'',
+        type:'weight', currentWeight, newWeight: Math.round((currentWeight+inc)*100)/100,
+        increment: inc, currentReps: ex.reps });
+    } else {
+      const cr = parseInt(String(ex.reps||'0').split('-')[0]) || 0;
+      if (cr > 0) updates.push({ exerciseName: ex.name, muscleGroup: ex.muscleGroup||'',
+        type:'reps', currentReps: cr, newReps: cr + 1 });
+    }
+  });
+  return updates;
+}
+
 // ─── Reusable UI helpers ──────────────────────────────────────────────────────
 function SliderInput({ label, value, onChange }) {
   const color = value <= 3 ? '#ef4444' : value <= 6 ? '#f59e0b' : '#22c55e';
@@ -758,6 +783,46 @@ function NiggleModal({ exercises, onFlag, onClose }) {
   );
 }
 
+// ─── Session picker modal ─────────────────────────────────────────────────────────────────
+function SessionPickerModal({ sessions, onPick, onClose }) {
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.72)',
+      backdropFilter:'blur(3px)',display:'flex',alignItems:'flex-end'}}
+      onClick={e=>{if(e.target===e.currentTarget)onClose();}}>
+      <div style={{width:'100%',maxWidth:'430px',margin:'0 auto',background:'#1e293b',
+        borderRadius:'20px 20px 0 0',padding:'20px 18px 36px',
+        border:'1px solid rgba(255,255,255,0.1)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'16px'}}>
+          <div>
+            <div style={{fontSize:'16px',fontWeight:'800',color:'#f8fafc'}}>📋 Pick a Session</div>
+            <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>Choose a workout to do today</div>
+          </div>
+          <button onClick={onClose} style={{background:'rgba(255,255,255,0.07)',border:'none',
+            borderRadius:'8px',color:'#94a3b8',width:'32px',height:'32px',cursor:'pointer',fontSize:'16px'}}>✕</button>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'8px'}}>
+          {sessions.map((s,i) => (
+            <button key={i} onClick={()=>onPick(s)}
+              style={{padding:'14px 16px',background:'rgba(255,255,255,0.04)',
+                border:'1px solid rgba(255,255,255,0.08)',borderRadius:'12px',
+                color:'#f8fafc',cursor:'pointer',textAlign:'left',
+                display:'flex',alignItems:'center',justifyContent:'space-between',
+                transition:'border-color 0.12s'}}
+              onMouseEnter={e=>e.currentTarget.style.borderColor='rgba(249,115,22,0.4)'}
+              onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.08)'}>
+              <div>
+                <div style={{fontSize:'14px',fontWeight:'700'}}>{s.SessionName||`Day ${i+1}`}</div>
+                {s.FocusArea && <div style={{fontSize:'12px',color:'#64748b',marginTop:'2px'}}>{s.FocusArea}</div>}
+              </div>
+              <span style={{color:'#f97316',fontSize:'16px'}}>→</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Exercise card (used in ActiveWorkout) ────────────────────────────────────
 function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false }) {
   const allDone = sets.every(s=>s.done);
@@ -1095,7 +1160,7 @@ function WeekStats({ stats, scheduledCount, completedCount }) {
 }
 
 // ─── Workout day card (weekly view) ──────────────────────────────────────────
-function WorkoutDayCard({ session, log, date, actualDate, onActualDateChange, onStart, onEdit, daysPerWeek }) {
+function WorkoutDayCard({ session, log, date, actualDate, onActualDateChange, onStart, onEdit, daysPerWeek, onPickSession }) {
   const isCompleted = log?.Status === 'Completed';
   const isToday = date === todayISO();
   const isPast  = new Date(date) < new Date(todayISO());
@@ -1112,7 +1177,14 @@ function WorkoutDayCard({ session, log, date, actualDate, onActualDateChange, on
       <div style={{background:'#1e293b',borderRadius:'16px',padding:'20px',border:'1px solid rgba(255,255,255,0.06)',textAlign:'center'}}>
         <div style={{fontSize:'24px',marginBottom:'8px'}}>🌙</div>
         <div style={{fontSize:'15px',fontWeight:'700',color:'#f8fafc',marginBottom:'4px'}}>Rest Day</div>
-        <div style={{fontSize:'13px',color:'#475569'}}>Recovery is part of the plan.</div>
+        <div style={{fontSize:'13px',color:'#475569',marginBottom: onPickSession ? '14px' : '0'}}>Recovery is part of the plan.</div>
+        {onPickSession && (
+          <button onClick={onPickSession} style={{
+            width:'100%',padding:'11px',background:'transparent',
+            border:'1.5px dashed rgba(249,115,22,0.35)',borderRadius:'11px',
+            color:'#f97316',fontSize:'13px',fontWeight:'700',cursor:'pointer',
+          }}>Want to train today? Pick a session →</button>
+        )}
       </div>
     );
   }
@@ -1273,6 +1345,61 @@ function WeeklyVolumePanel({ programDays }) {
   );
 }
 
+// ─── Progressive Overload modal ───────────────────────────────────────────────────────
+function ProgressionModal({ updates, onConfirm, onDismiss, saving }) {
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:210,background:'rgba(0,0,0,0.78)',
+      backdropFilter:'blur(4px)',display:'flex',alignItems:'center',
+      justifyContent:'center',padding:'20px'}}>
+      <div style={{width:'100%',maxWidth:'400px',background:'#1e293b',borderRadius:'20px',
+        padding:'24px 20px',border:'1px solid rgba(249,115,22,0.25)'}}>
+        <div style={{textAlign:'center',marginBottom:'20px'}}>
+          <div style={{fontSize:'32px',marginBottom:'10px'}}>🎯</div>
+          <div style={{fontSize:'18px',fontWeight:'800',color:'#f8fafc'}}>Progressive Overload!</div>
+          <div style={{fontSize:'13px',color:'#64748b',marginTop:'6px',lineHeight:1.5}}>
+            You nailed every rep on {updates.length} exercise{updates.length>1?'s':''}.<br/>Time to level up for your next session.
+          </div>
+        </div>
+        <div style={{display:'flex',flexDirection:'column',gap:'8px',marginBottom:'20px'}}>
+          {updates.map((u,i) => (
+            <div key={i} style={{background:'rgba(249,115,22,0.07)',
+              border:'1px solid rgba(249,115,22,0.18)',borderRadius:'11px',
+              padding:'12px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:'13px',fontWeight:'700',color:'#f8fafc'}}>{u.exerciseName}</div>
+                <div style={{fontSize:'11px',color:'#64748b',marginTop:'2px'}}>{u.muscleGroup}</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                {u.type==='weight' ? (
+                  <>
+                    <div style={{fontSize:'15px',fontWeight:'800',color:'#22c55e'}}>{u.newWeight}kg</div>
+                    <div style={{fontSize:'10px',color:'#64748b'}}>was {u.currentWeight}kg (+{u.increment}kg)</div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{fontSize:'15px',fontWeight:'800',color:'#22c55e'}}>{u.newReps} reps</div>
+                    <div style={{fontSize:'10px',color:'#64748b'}}>was {u.currentReps} reps (+1)</div>
+                  </>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <button onClick={onConfirm} disabled={saving} style={{
+          width:'100%',padding:'13px',background:saving?'rgba(249,115,22,0.4)':'#f97316',
+          border:'none',borderRadius:'12px',color:'#fff',fontSize:'14px',
+          fontWeight:'700',cursor:saving?'not-allowed':'pointer',marginBottom:'8px',
+        }}>{saving ? 'Updating program…' : 'Apply to my program ✓'}</button>
+        <button onClick={onDismiss} style={{
+          width:'100%',padding:'12px',background:'transparent',
+          border:'1px solid rgba(255,255,255,0.1)',borderRadius:'12px',
+          color:'#64748b',fontSize:'14px',fontWeight:'600',cursor:'pointer',
+        }}>Not now</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main TrainingPage ─────────────────────────────────────────────────────────
 export default function TrainingPage() {
   const { user } = useAuth();
@@ -1297,6 +1424,11 @@ export default function TrainingPage() {
   const [activeSets,       setActiveSets]       = useState({});
   const [activeSession,    setActiveSession]    = useState(null);
   const [allExercises,     setAllExercises]     = useState([]);
+  const [prepping,         setPrepping]         = useState(false);
+  const [showSessionPicker,setShowSessionPicker]= useState(false);
+  const [progressionItems, setProgressionItems] = useState([]);
+  const [showProgression,  setShowProgression]  = useState(false);
+  const [savingProgression,setSavingProgression]= useState(false);
 
   const weekDays     = getWeekDays();
   const daysPerWeek  = trainingDays?.size || parseInt(activeProgram?.DaysPerWeek) || parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
@@ -1370,14 +1502,39 @@ export default function TrainingPage() {
   };
 
   // Handle pre-workout chat submission
-  const handlePreWorkoutSubmit = (data) => {
+  const handlePreWorkoutSubmit = async (data) => {
     setPreWorkoutData(data);
     let exs = [];
     try { exs = JSON.parse(activeSession?.Exercises||'[]'); } catch {}
 
-    // Smart injury-based exercise swap using Exercises sheet library
+    // Step 1: local keyword-based swap from Exercises library
     if (data.hasInjury && data.injuryNotes && allExercises.length > 0) {
       exs = swapInjuredExercises(exs, data.injuryNotes, allExercises);
+    }
+
+    // Step 2: AI sub via Claude for any exercises still flagged (no local match found)
+    const stillFlagged = exs.filter(ex => ex.flaggedForInjury);
+    if (stillFlagged.length > 0 && data.hasInjury && data.injuryNotes) {
+      setPrepping(true);
+      try {
+        const result = await callProxy({
+          action: 'substituteExercises',
+          exercises: stillFlagged.map(e => ({ name: e.name, muscleGroup: e.muscleGroup||'' })),
+          injuryNotes: data.injuryNotes,
+        });
+        if (result.substitutions?.length > 0) {
+          const subMap = {};
+          result.substitutions.forEach(s => { subMap[s.original.toLowerCase()] = s; });
+          exs = exs.map(ex => {
+            if (!ex.flaggedForInjury) return ex;
+            const sub = subMap[(ex.name||'').toLowerCase()];
+            if (sub) return { ...ex, name: sub.substitute, originalName: ex.name,
+              swappedForInjury: true, flaggedForInjury: false };
+            return ex;
+          });
+        }
+      } catch { /* AI sub failed — leave exercises flagged */ }
+      finally { setPrepping(false); }
     }
 
     // Apply adjustments (banners + recovery detection)
@@ -1518,20 +1675,64 @@ export default function TrainingPage() {
         } catch {}
       }
 
+      // Check for progressive overload opportunities
+      const progItems = computeProgression(activeExercises, activeSets);
       setView('weekly');
       await fetchData();
+      if (progItems.length > 0) {
+        setProgressionItems(progItems);
+        setShowProgression(true);
+      }
     } catch { alert('Failed to save. Please try again.'); }
     finally { setSaving(false); }
+  };
+
+  const handleConfirmProgression = async () => {
+    setSavingProgression(true);
+    try {
+      if (activeProgram?.ProgramID && progressionItems.length > 0) {
+        await callProxy({
+          action: 'applyProgression',
+          programId: activeProgram.ProgramID,
+          updates: progressionItems,
+        });
+        await fetchData(); // reload updated program
+      }
+    } catch { /* silent — progression not critical */ }
+    finally {
+      setSavingProgression(false);
+      setShowProgression(false);
+      setProgressionItems([]);
+    }
+  };
+
+  const handleDismissProgression = () => {
+    setShowProgression(false);
+    setProgressionItems([]);
   };
 
   // ── Sub-views ──
   if (view === 'preWorkout') {
     return (
-      <PreWorkoutChat
-        session={activeSession}
-        onSubmit={handlePreWorkoutSubmit}
-        onCancel={()=>setView('weekly')}
-      />
+      <>
+        <PreWorkoutChat
+          session={activeSession}
+          onSubmit={handlePreWorkoutSubmit}
+          onCancel={()=>setView('weekly')}
+        />
+        {prepping && (
+          <div style={{position:'fixed',inset:0,zIndex:300,background:'rgba(15,23,42,0.96)',
+            display:'flex',alignItems:'center',justifyContent:'center',
+            flexDirection:'column',gap:'16px'}}>
+            <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+            <div style={{width:'48px',height:'48px',borderRadius:'50%',
+              border:'4px solid rgba(249,115,22,0.2)',borderTopColor:'#f97316',
+              animation:'spin 1s linear infinite'}}/>
+            <div style={{color:'#f97316',fontWeight:700,fontSize:'15px'}}>Adapting your session…</div>
+            <div style={{color:'#64748b',fontSize:'12px'}}>Finding safer exercise alternatives</div>
+          </div>
+        )}
+      </>
     );
   }
   if (view === 'active') {
@@ -1596,6 +1797,7 @@ export default function TrainingPage() {
           daysPerWeek={daysPerWeek}
           onStart={()=>handleStartWorkout(selectedSession)}
           onEdit={handleEditEntries}
+          onPickSession={sessions.length > 0 ? ()=>setShowSessionPicker(true) : null}
         />
       )}
 
@@ -1623,6 +1825,25 @@ export default function TrainingPage() {
         <div style={{color:'#fca5a5',fontSize:'13px',textAlign:'center',marginTop:'8px'}}>
           {error} <button onClick={fetchData} style={{background:'none',border:'none',color:'#f97316',fontSize:'13px',fontWeight:'700',cursor:'pointer',padding:'0 4px'}}>Retry</button>
         </div>
+      )}
+
+      {/* Session picker modal — shown for rest days or to swap workout day */}
+      {showSessionPicker && (
+        <SessionPickerModal
+          sessions={sessions}
+          onPick={s => { setShowSessionPicker(false); handleStartWorkout(s); }}
+          onClose={() => setShowSessionPicker(false)}
+        />
+      )}
+
+      {/* Progressive overload modal — shown after a complete workout */}
+      {showProgression && (
+        <ProgressionModal
+          updates={progressionItems}
+          onConfirm={handleConfirmProgression}
+          onDismiss={handleDismissProgression}
+          saving={savingProgression}
+        />
       )}
     </div>
   );

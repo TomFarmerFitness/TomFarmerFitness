@@ -171,6 +171,8 @@ function doPost(e) {
       var clientLimitations = data.clientLimitations || '';
       var clientEmphasis    = data.clientFocusAreas  || '';
       var clientNotes       = data.clientNotes       || '';
+      var phase1End         = Math.floor(duration / 2);
+      var phase2Start       = phase1End + 1;
 
       var clientSection = '';
       if (clientGoals || clientLimitations || clientEmphasis || clientNotes) {
@@ -192,23 +194,32 @@ function doPost(e) {
         (notes ? 'Additional Notes: ' + notes + '\n' : '') +
         clientSection +
         '\nCORE PROGRAM PHILOSOPHY (non-negotiable):\n' +
-        '- EVERY muscle group must be trained — chest, back, shoulders, biceps, triceps, quads, hamstrings, glutes, calves, core\n' +
+        '- EVERY muscle group must be trained every week: chest, back, shoulders, biceps, triceps, quads, hamstrings, glutes, calves, core\n' +
         '- Each muscle group must accumulate 10-15 working sets per week total\n' +
         '- Each muscle group must appear in AT LEAST 2 separate training days per week (frequency principle)\n' +
-        '- If emphasis areas are specified in the client profile, allocate more sets to those muscles (up to 15) while keeping all other groups at minimum 10 sets — do NOT drop any muscle group\n' +
-        '- Distribute muscle groups intelligently across days to allow 48h recovery between same-muscle sessions\n' +
+        '- If emphasis areas specified, allocate more sets to those muscles (up to 15) while keeping all others at minimum 10 sets\n' +
+        '- Distribute muscle groups intelligently to allow 48h recovery between same-muscle sessions\n' +
+        '\nPERIODISATION STRUCTURE (MANDATORY):\n' +
+        '- Phase 1 (weeks 1-' + phase1End + '): Hypertrophy - 10-15 reps, moderate load, 60-90s rest. Week ' + phase1End + ' = deload (50% volume)\n' +
+        '- Phase 2 (weeks ' + phase2Start + '-' + duration + '): Strength - 5-8 reps, heavier load, 2-3min rest. Week ' + duration + ' = deload (50% volume)\n' +
+        '- Set exercises/reps/weight for Phase 1 as the starting values in the JSON\n' +
+        '- For EACH exercise include a progressionScheme field (under 80 chars) e.g. Ph1:3x12;Ph2(wk' + phase2Start + '+):4x6;+2.5kg when all reps hit\n' +
+        '\nPROGRESSIVE OVERLOAD:\n' +
+        '- Compound (bench/squat/deadlift/row/press/pull): +2.5kg per session when all sets completed\n' +
+        '- Isolation exercises: +1.25kg per session when all sets completed\n' +
+        '- Bodyweight: +1 rep per set per session when all sets completed\n' +
         '\nRULES:\n' +
         '- Return ONLY valid JSON, no markdown, no extra text\n' +
         '- Maximum 6 exercises per day\n' +
         '- Design each day to fit within ' + sessionDuration + ' minutes\n' +
-        '- Match exercise selection, sets, and rest periods to the ' + trainingType + ' training style\n' +
-        '- Keep all string values SHORT (name under 30 chars, notes under 40 chars)\n' +
+        '- Match exercise selection to Phase 1 of ' + trainingType + ' style\n' +
+        '- Keep all string values SHORT (name <30, notes <50, progressionScheme <80 chars)\n' +
         '- Use empty string "" for notes fields\n' +
         '\nJSON schema (fill in real values):\n' +
-        '{"name":"Program Name","description":"Brief description","goal":"' + goal + '","daysPerWeek":' + daysPerWeek + ',' +
+        '{"name":"Program Name","description":"2-phase description","goal":"' + goal + '","daysPerWeek":' + daysPerWeek + ',' +
         '"durationWeeks":' + duration + ',"level":"' + level + '","equipment":[],"focusAreas":[],' +
         '"days":[{"dayOrder":1,"dayName":"Push","focusArea":"Chest & Triceps","exercises":[' +
-        '{"name":"Bench Press","muscleGroup":"Chest","sets":4,"reps":"8-10","rest":"90s","notes":""}]}]}';
+        '{"name":"Bench Press","muscleGroup":"Chest","sets":3,"reps":"10-12","rest":"90s","notes":"","progressionScheme":"Ph1:3x12;Ph2:4x6;+2.5kg when complete"}]}]}';
 
       var payload = {
         model: 'claude-haiku-4-5-20251001',
@@ -349,6 +360,81 @@ function doPost(e) {
 
       exData.forEach(function(row) { exSheet.appendRow(row); });
       return ok({ seeded: true, count: exData.length });
+    }
+
+    // -- AI exercise substitution for injuries -----------------------------------
+    if (data.action === 'substituteExercises') {
+      var apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
+      if (!apiKey) throw new Error('CLAUDE_API_KEY not set in Script Properties');
+
+      var injuryNotes = data.injuryNotes || '';
+      var flaggedExs  = data.exercises   || [];
+      var exListStr = flaggedExs.map(function(e) {
+        return '- ' + e.name + ' (' + (e.muscleGroup || 'unknown') + ')';
+      }).join('\n');
+
+      var subPrompt =
+        'You are a personal trainer. A client reported this injury: "' + injuryNotes + '"\n\n' +
+        'These exercises may aggravate it:\n' + exListStr + '\n\n' +
+        'For EACH exercise suggest ONE safer alternative that trains the same muscle group while avoiding the injured area.\n' +
+        'Return ONLY a JSON array (no markdown):\n' +
+        '[{"original":"Bench Press","substitute":"Machine Chest Press","reason":"Less shoulder stress"}]\n' +
+        'If all exercises are already safe return [].';
+
+      var subResp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method: 'post',
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        payload: JSON.stringify({ model: 'claude-haiku-4-5-20251001', max_tokens: 512,
+          messages: [{ role: 'user', content: subPrompt }] }),
+        muteHttpExceptions: true,
+      });
+      var subResult = JSON.parse(subResp.getContentText());
+      if (subResult.error) throw new Error(subResult.error.message);
+      var subTxt = subResult.content[0].text.trim().replace(/^```(?:json)?\s*/i,'').replace(/\s*```\s*$/,'');
+      return ok({ substitutions: JSON.parse(subTxt) });
+    }
+
+    // -- Apply progressive overload to program DaysJSON -----------------------
+    if (data.action === 'applyProgression') {
+      var programId = data.programId;
+      var pgUpdates = data.updates || [];
+
+      var pgSheet  = ss.getSheetByName('Programs');
+      if (!pgSheet) throw new Error('Programs sheet not found');
+      var pgLastCol = pgSheet.getLastColumn();
+      var pgLastRow = pgSheet.getLastRow();
+      if (pgLastRow < 2) throw new Error('No programs found');
+
+      var pgHeaders = pgSheet.getRange(1,1,1,pgLastCol).getValues()[0];
+      var pgIdIdx   = pgHeaders.indexOf('ProgramID');
+      var pgJsonIdx = pgHeaders.indexOf('DaysJSON');
+      if (pgIdIdx < 0 || pgJsonIdx < 0) throw new Error('Missing ProgramID or DaysJSON column');
+
+      var pgRows = pgSheet.getRange(2,1,pgLastRow-1,pgLastCol).getValues();
+      var pgRowIdx = -1;
+      for (var pgi = 0; pgi < pgRows.length; pgi++) {
+        if (pgRows[pgi][pgIdIdx] === programId) { pgRowIdx = pgi; break; }
+      }
+      if (pgRowIdx < 0) throw new Error('Program not found: ' + programId);
+
+      var pgDays;
+      try { pgDays = JSON.parse(pgRows[pgRowIdx][pgJsonIdx]); }
+      catch(pje) { throw new Error('Invalid DaysJSON in program'); }
+
+      var pgUpdMap = {};
+      pgUpdates.forEach(function(u) { pgUpdMap[u.exerciseName.toLowerCase()] = u; });
+
+      pgDays.forEach(function(day) {
+        (day.exercises || []).forEach(function(ex) {
+          var upd = pgUpdMap[(ex.name || '').toLowerCase()];
+          if (!upd) return;
+          if (upd.type === 'weight') ex.weight = upd.newWeight;
+          else if (upd.type === 'reps') ex.reps = String(upd.newReps);
+        });
+      });
+
+      pgSheet.getRange(pgRowIdx + 2, pgJsonIdx + 1).setValue(JSON.stringify(pgDays));
+      return ok({ updated: true, count: pgUpdates.length });
     }
 
     // ── Suggest program settings from client description ─────────────────────
@@ -591,11 +677,4 @@ function doGet() {
 function ok(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(Object.assign({ success: true }, payload)))
-    .setMimeType(ContentService.MimeType.JSON);
-}
-
-function error(msg) {
-  return ContentService
-    .createTextOutput(JSON.stringify({ success: false, error: msg }))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+   

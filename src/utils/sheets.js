@@ -156,11 +156,13 @@ export async function deleteRowsWhere(tab, column, value) {
  * Look up food nutrition via the Apps Script Claude proxy.
  * Returns an array: [{ foodName, servingSize, calories, protein, carbs, fats, fibre }]
  */
+/**
+ * Direct proxy call — for any custom Apps Script action not covered above.
+ */
+export async function callProxy(payload) {
+  return scriptPost(payload);
+}
+
 export async function lookupFood(query) {
   const url = config.APPS_SCRIPT_URL;
-  if (!url || url.startsWith('YOUR_')) {
-    throw new Error('apps_script_not_configured');
-  }
-  const data = await scriptPost({ action: 'lookupFood', query });
-  return data.results || [];
-}
+  if (!url || url.startsWith('Y
