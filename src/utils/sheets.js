@@ -165,4 +165,9 @@ export async function callProxy(payload) {
 
 export async function lookupFood(query) {
   const url = config.APPS_SCRIPT_URL;
-  if (!url || url.startsWith('Y
+  if (!url || url.startsWith('YOUR_')) {
+    throw new Error('apps_script_not_configured');
+  }
+  const data = await scriptPost({ action: 'lookupFood', query });
+  return data.results || [];
+}
