@@ -677,4 +677,5 @@ function doGet() {
 function ok(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(Object.assign({ success: true }, payload)))
-   
+    .setMimeType(ContentService.MimeType.JSON);
+}
