@@ -166,20 +166,19 @@ function doPost(e) {
       var trainingType    = data.trainingType    || 'Hypertrophy';
       var level           = data.level           || 'Intermediate';
       var equipment       = (data.equipment      || []).join(', ') || 'Any';
-      var focus           = (data.focusAreas     || []).join(', ') || 'Full body';
       var notes             = data.notes             || '';
       var clientGoals       = data.clientGoals       || '';
       var clientLimitations = data.clientLimitations || '';
-      var clientFocusAreas  = data.clientFocusAreas  || '';
+      var clientEmphasis    = data.clientFocusAreas  || '';
       var clientNotes       = data.clientNotes       || '';
 
       var clientSection = '';
-      if (clientGoals || clientLimitations || clientFocusAreas || clientNotes) {
+      if (clientGoals || clientLimitations || clientEmphasis || clientNotes) {
         clientSection = '\nCLIENT PROFILE:\n' +
-          (clientGoals       ? 'Goals: '        + clientGoals       + '\n' : '') +
-          (clientLimitations ? 'Limitations: '  + clientLimitations + '\n' : '') +
-          (clientFocusAreas  ? 'Focus Areas: '  + clientFocusAreas  + '\n' : '') +
-          (clientNotes       ? 'Notes: '        + clientNotes       + '\n' : '');
+          (clientGoals       ? 'Goals: '             + clientGoals       + '\n' : '') +
+          (clientLimitations ? 'Limitations: '       + clientLimitations + '\n' : '') +
+          (clientEmphasis    ? 'Emphasis areas: '    + clientEmphasis    + '\n' : '') +
+          (clientNotes       ? 'Notes: '             + clientNotes       + '\n' : '');
       }
 
       var prompt = 'You are an expert personal trainer. Generate a complete training program as compact JSON.\n' +
@@ -190,9 +189,14 @@ function doPost(e) {
         'Duration: ' + duration + ' weeks\n' +
         'Level: ' + level + '\n' +
         'Equipment: ' + equipment + '\n' +
-        'Focus: ' + focus + '\n' +
         (notes ? 'Additional Notes: ' + notes + '\n' : '') +
         clientSection +
+        '\nCORE PROGRAM PHILOSOPHY (non-negotiable):\n' +
+        '- EVERY muscle group must be trained — chest, back, shoulders, biceps, triceps, quads, hamstrings, glutes, calves, core\n' +
+        '- Each muscle group must accumulate 10-15 working sets per week total\n' +
+        '- Each muscle group must appear in AT LEAST 2 separate training days per week (frequency principle)\n' +
+        '- If emphasis areas are specified in the client profile, allocate more sets to those muscles (up to 15) while keeping all other groups at minimum 10 sets — do NOT drop any muscle group\n' +
+        '- Distribute muscle groups intelligently across days to allow 48h recovery between same-muscle sessions\n' +
         '\nRULES:\n' +
         '- Return ONLY valid JSON, no markdown, no extra text\n' +
         '- Maximum 6 exercises per day\n' +
@@ -203,7 +207,7 @@ function doPost(e) {
         '\nJSON schema (fill in real values):\n' +
         '{"name":"Program Name","description":"Brief description","goal":"' + goal + '","daysPerWeek":' + daysPerWeek + ',' +
         '"durationWeeks":' + duration + ',"level":"' + level + '","equipment":[],"focusAreas":[],' +
-        '"days":[{"dayOrder":1,"dayName":"Push","focusArea":"Chest","exercises":[' +
+        '"days":[{"dayOrder":1,"dayName":"Push","focusArea":"Chest & Triceps","exercises":[' +
         '{"name":"Bench Press","muscleGroup":"Chest","sets":4,"reps":"8-10","rest":"90s","notes":""}]}]}';
 
       var payload = {
@@ -347,7 +351,55 @@ function doPost(e) {
       return ok({ seeded: true, count: exData.length });
     }
 
-        throw new Error("Unknown action: " + data.action);
+    // ── Suggest program settings from client description ─────────────────────
+    if (data.action === 'suggestSettings') {
+      var apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
+      if (!apiKey) throw new Error('CLAUDE_API_KEY not set in Script Properties');
+
+      var description = data.description || '';
+      var suggestPrompt = 'You are an expert personal trainer. Based on this client description, suggest optimal program settings.\n' +
+        'Client description: ' + description + '\n\n' +
+        'Return ONLY valid JSON with these exact fields (no markdown, no extra text):\n' +
+        '{\n' +
+        '  "goal": "Weight Loss|Muscle Gain|Strength|General Fitness",\n' +
+        '  "daysPerWeek": 3,\n' +
+        '  "durationWeeks": 8,\n' +
+        '  "sessionDuration": 60,\n' +
+        '  "trainingType": "HIIT|Strength and Conditioning|Hypertrophy|Mobility",\n' +
+        '  "level": "Beginner|Intermediate|Advanced",\n' +
+        '  "equipment": ["Dumbbells","Barbell"],\n' +
+        '  "emphasisAreas": ["Glutes","Shoulders"]\n' +
+        '}\n\n' +
+        'Equipment options: Barbell, Dumbbells, Cables, Machines, Kettlebells, Bodyweight, Resistance Bands, TRX, Smith Machine\n' +
+        'emphasisAreas are muscle groups the client wants MORE focus on (higher set count) — all other muscles are still trained. Options: Chest, Back, Shoulders, Biceps, Triceps, Quads, Hamstrings, Glutes, Calves, Core\n' +
+        'Pick the most appropriate values based on the description.';
+
+      var suggestPayload = {
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 512,
+        messages: [{ role: 'user', content: suggestPrompt }],
+      };
+
+      var suggestResp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
+        method: 'post',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json',
+        },
+        payload: JSON.stringify(suggestPayload),
+        muteHttpExceptions: true,
+      });
+
+      var suggestResult = JSON.parse(suggestResp.getContentText());
+      if (suggestResult.error) throw new Error(suggestResult.error.message);
+      var suggestText = suggestResult.content[0].text.trim();
+      suggestText = suggestText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
+      var settings = JSON.parse(suggestText);
+      return ok({ settings: settings });
+    }
+
+    throw new Error("Unknown action: " + data.action);
 
   } catch (err) {
     return error(err.message);
@@ -529,59 +581,6 @@ function uploadPhotoToDrive(clientId, clientName, base64Data, mimeType, fileName
 
   return { fileId: fileId, viewUrl: viewUrl, thumbnailUrl: thumbnailUrl };
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  Utilities
-// ─────────────────────────────────────────────────────────────────────────────
-
-    // ── Suggest program settings from client description ─────────────────────
-    if (data.action === 'suggestSettings') {
-      var apiKey = PropertiesService.getScriptProperties().getProperty('CLAUDE_API_KEY');
-      if (!apiKey) throw new Error('CLAUDE_API_KEY not set in Script Properties');
-
-      var description = data.description || '';
-      var suggestPrompt = 'You are an expert personal trainer. Based on this client description, suggest optimal program settings.\n' +
-        'Client description: ' + description + '\n\n' +
-        'Return ONLY valid JSON with these exact fields (no markdown, no extra text):\n' +
-        '{\n' +
-        '  "goal": "Weight Loss|Muscle Gain|Strength|General Fitness",\n' +
-        '  "daysPerWeek": 3,\n' +
-        '  "durationWeeks": 8,\n' +
-        '  "sessionDuration": 60,\n' +
-        '  "trainingType": "HIIT|Strength and Conditioning|Hypertrophy|Mobility",\n' +
-        '  "level": "Beginner|Intermediate|Advanced",\n' +
-        '  "equipment": ["Dumbbells","Barbell"],\n' +
-        '  "focusAreas": ["Chest","Back"]\n' +
-        '}\n\n' +
-        'Equipment options: Barbell, Dumbbells, Cables, Machines, Kettlebells, Bodyweight, Resistance Bands, TRX, Smith Machine\n' +
-        'Focus area options: Full Body, Upper Body, Lower Body, Push Day, Pull Day, Legs, Chest and Triceps, Back and Biceps, Shoulders, Arms, Core\n' +
-        'Pick the most appropriate values based on the description.';
-
-      var suggestPayload = {
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 512,
-        messages: [{ role: 'user', content: suggestPrompt }],
-      };
-
-      var suggestResp = UrlFetchApp.fetch('https://api.anthropic.com/v1/messages', {
-        method: 'post',
-        headers: {
-          'x-api-key': apiKey,
-          'anthropic-version': '2023-06-01',
-          'content-type': 'application/json',
-        },
-        payload: JSON.stringify(suggestPayload),
-        muteHttpExceptions: true,
-      });
-
-      var suggestResult = JSON.parse(suggestResp.getContentText());
-      if (suggestResult.error) throw new Error(suggestResult.error.message);
-      var suggestText = suggestResult.content[0].text.trim();
-      suggestText = suggestText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/, '');
-      var settings = JSON.parse(suggestText);
-      return ok({ settings: settings });
-    }
-
 
 function doGet() {
   return ContentService

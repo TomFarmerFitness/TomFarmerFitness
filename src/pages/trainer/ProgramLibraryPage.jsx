@@ -479,8 +479,8 @@ function GenerateAIModal({ onClose, onGenerated }) {
                   placeholder:'e.g. Build muscle, lose fat, improve fitness for sport…' },
                 { label:'INJURIES / LIMITATIONS', val:clientLimitations, set:setClientLimitations,
                   placeholder:"e.g. Bad lower back, knee surgery, can't overhead press..." },
-                { label:'FOCUS AREAS', val:clientFocusAreas, set:setClientFocusAreas,
-                  placeholder:'e.g. Upper body strength, glute development, core stability…' },
+                { label:'EMPHASIS AREAS', val:clientFocusAreas, set:setClientFocusAreas,
+                  placeholder:'e.g. Glutes, shoulders, arms — areas to prioritise with more sets' },
                 { label:'ADDITIONAL NOTES', val:clientNotes, set:setClientNotes,
                   placeholder:'e.g. Trains at home, prefers compound movements, time-poor…' },
               ].map(({ label, val, set, placeholder }) => (
@@ -557,16 +557,6 @@ function GenerateAIModal({ onClose, onGenerated }) {
               {EQUIPMENT_OPTIONS.map(e => (
                 <button key={e} style={chipStyle(equipment.includes(e))}
                   onClick={() => toggleArr(equipment, setEquipment, e)}>{e}</button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <div style={labelStyle}>FOCUS AREAS</div>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-              {FOCUS_AREAS.map(f => (
-                <button key={f} style={chipStyle(focus.includes(f))}
-                  onClick={() => toggleArr(focus, setFocus, f)}>{f}</button>
               ))}
             </div>
           </div>
@@ -703,15 +693,6 @@ function StepDetails({ data, onChange }) {
         </div>
       </div>
 
-      <div>
-        <label style={labelStyle}>FOCUS AREAS</label>
-        <div style={{ display:'flex', flexWrap:'wrap', gap:'6px' }}>
-          {FOCUS_AREAS.map(f => (
-            <button key={f} style={chipStyle(data.focusAreas.includes(f))}
-              onClick={() => toggleFocus(f)}>{f}</button>
-          ))}
-        </div>
-      </div>
     </div>
   );
 }
@@ -757,13 +738,6 @@ function StepBuildDays({ days, daysPerWeek, onDaysChange }) {
               onChange={e => updateDay(i, 'dayName', e.target.value)}
               placeholder={`Day ${i + 1} name (e.g. Push, Legs, Upper)`}
               style={{ ...inputStyle, flex:1 }} />
-          </div>
-          <div>
-            <select value={day.focusArea} onChange={e => updateDay(i, 'focusArea', e.target.value)}
-              style={{ ...inputStyle, width:'100%' }}>
-              <option value="">— Focus area (optional) —</option>
-              {FOCUS_AREAS.map(f => <option key={f} value={f}>{f}</option>)}
-            </select>
           </div>
         </div>
       ))}
