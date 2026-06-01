@@ -1230,10 +1230,14 @@ export default function ProgramLibraryPage() {
         });
       }
     }
-    // Remove unassigned
+    // Remove unassigned — delete only the row matching both ClientID and ProgramID
     for (const cid of current) {
       if (!clientIds.includes(cid)) {
-        await deleteSheetRowsWhere('ClientPrograms', 'ClientID', cid);
+        // Find the specific ClientProgramID to delete
+        const row = clientPrograms.find(cp => cp.ClientID === cid && cp.ProgramID === programId);
+        if (row?.ClientProgramID) {
+          await callProxy({ action: 'deleteRow', tab: 'ClientPrograms', idColumn: 'ClientProgramID', id: row.ClientProgramID });
+        }
       }
     }
     await fetchData(); // refresh
