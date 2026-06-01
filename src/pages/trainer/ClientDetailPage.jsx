@@ -254,13 +254,12 @@ export default function ClientDetailPage() {
     async function load() {
       try {
         setLoading(true);
-        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, cpRows, progRows] = await Promise.all([
+        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
           readSheet('BodyMetrics').catch(() => []),
           readSheet('ProgressPhotos').catch(() => []),
           readSheet('MacroAdjustments').catch(() => []),
-          readSheet('ClientPrograms').catch(() => []),
           readSheet('Programs').catch(() => []),
         ]);
 
@@ -268,12 +267,9 @@ export default function ClientDetailPage() {
         if (!found) { setError('Client not found.'); return; }
         setClient(found);
 
-        // Find active program assignment
-        const myAssignment = cpRows.find(
-          cp => cp.ClientID === clientId && cp.Status === 'Active'
-        );
-        const myProgram = myAssignment
-          ? progRows.find(p => p.ProgramID === myAssignment.ProgramID) || null
+        // Find assigned program from client's ProgramID field
+        const myProgram = found.ProgramID
+          ? progRows.find(p => p.ProgramID === found.ProgramID) || null
           : null;
         setAssignedProgram(myProgram);
 

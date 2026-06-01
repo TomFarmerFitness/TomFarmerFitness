@@ -1437,9 +1437,8 @@ export default function TrainingPage() {
     if (!user?.clientID) return;
     setLoading(true); setError(null);
     try {
-      const [clients, cpRows, progRows, logs] = await Promise.all([
+      const [clients, progRows, logs] = await Promise.all([
         readSheet('Clients'),
-        readSheet('ClientPrograms'),
         readSheet('Programs'),
         readSheet('WorkoutLogs'),
       ]);
@@ -1449,16 +1448,13 @@ export default function TrainingPage() {
       const profile = clients.find(c => c.ClientID === user.clientID) || null;
       setClientProfile(profile);
 
-      // Find active program assignment from ClientPrograms
-      const myAssignment = cpRows.find(
-        cp => cp.ClientID === user.clientID && cp.Status === 'Active'
-      );
-      const myProgram = myAssignment
-        ? progRows.find(p => p.ProgramID === myAssignment.ProgramID) || null
+      // Find assigned program from client's ProgramID field
+      const myProgram = profile?.ProgramID
+        ? progRows.find(p => p.ProgramID === profile.ProgramID) || null
         : null;
       setActiveProgram(myProgram);
-      const assignedDays = myAssignment?.TrainingDays
-        ? new Set(myAssignment.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean))
+      const assignedDays = profile?.TrainingDays
+        ? new Set(profile.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean))
         : null;
       setTrainingDays(assignedDays);
 

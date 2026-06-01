@@ -1113,7 +1113,6 @@ export default function ProgramLibraryPage() {
   const [programs, setPrograms]       = useState([]);
   const [clients, setClients]         = useState([]);
   const [exercises, setExercises]     = useState([]);
-  const [clientPrograms, setCPs]      = useState([]);
   const [goalFilter, setGoalFilter]   = useState('All');
   const [searchQuery,  setSearchQuery]  = useState('');
   const [loading, setLoading]         = useState(true);
@@ -1129,21 +1128,22 @@ export default function ProgramLibraryPage() {
   // Build assignedMap: programId → [clientId, ...]
   const assignedMap = useMemo(() => {
     const m = {};
-    clientPrograms.forEach(cp => {
-      if (!m[cp.ProgramID]) m[cp.ProgramID] = [];
-      m[cp.ProgramID].push(cp.ClientID);
+    clients.forEach(c => {
+      if (c.ProgramID) {
+        if (!m[c.ProgramID]) m[c.ProgramID] = [];
+        m[c.ProgramID].push(c.ClientID);
+      }
     });
     return m;
-  }, [clientPrograms]);
+  }, [clients]);
 
   const fetchData = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const [rawProgs, rawClients, rawExercises, rawCPs] = await Promise.all([
+      const [rawProgs, rawClients, rawExercises] = await Promise.all([
         readSheet('Programs').catch(() => []),
         readSheet('Clients').catch(() => []),
         readSheet('Exercises').catch(() => []),
-        readSheet('ClientPrograms').catch(() => []),
       ]);
 
       // Parse days JSON for each program
@@ -1162,7 +1162,6 @@ export default function ProgramLibraryPage() {
       setPrograms(parsed);
       setClients(rawClients);
       setExercises(rawExercises);
-      setCPs(rawCPs);
     } catch(e) { setError(e.message); }
     finally { setLoading(false); }
   }, []);
@@ -1216,29 +1215,19 @@ export default function ProgramLibraryPage() {
     setPrograms(prev => [copy, ...prev]);
   };
 
-  // Assign to clients
+  // Assign to clients — store ProgramID + TrainingDays directly on the Client row
   const handleAssign = async (programId, clientIds, trainingDays) => {
-    const current = assignedMap[programId] || [];
     const daysStr = (trainingDays || []).join(',');
-    // Add new assignments
+    // Assign selected clients
     for (const cid of clientIds) {
-      if (!current.includes(cid)) {
-        await appendToSheet('ClientPrograms', {
-          ClientProgramID: generateId('cp'), ClientID: cid,
-          ProgramID: programId, AssignedAt: todayISO(), Status: 'Active',
-          TrainingDays: daysStr,
-        });
-      }
+      await upsertSheetRow('Clients', 'ClientID', cid, { ProgramID: programId, TrainingDays: daysStr });
     }
-    // Remove unassigned — delete only the row matching both ClientID and ProgramID
-    for (const cid of current) {
-      if (!clientIds.includes(cid)) {
-        // Find the specific ClientProgramID to delete
-        const row = clientPrograms.find(cp => cp.ClientID === cid && cp.ProgramID === programId);
-        if (row?.ClientProgramID) {
-          await callProxy({ action: 'deleteRow', tab: 'ClientPrograms', idColumn: 'ClientProgramID', id: row.ClientProgramID });
-        }
-      }
+    // Clear program from unselected clients that previously had this program
+    const previouslyAssigned = clients.filter(
+      c => c.ProgramID === programId && !clientIds.includes(c.ClientID)
+    );
+    for (const c of previouslyAssigned) {
+      await upsertSheetRow('Clients', 'ClientID', c.ClientID, { ProgramID: '', TrainingDays: '' });
     }
     await fetchData(); // refresh
   };
