@@ -1816,14 +1816,18 @@ export default function TrainingPage() {
       }
 
       // Check for progressive overload opportunities
-      const progItems = computeProgression(activeExercises, activeSets);
+      let progItems = [];
+      try { progItems = computeProgression(activeExercises, activeSets); } catch {}
       setView('weekly');
       await fetchData();
       if (progItems.length > 0) {
         setProgressionItems(progItems);
         setShowProgression(true);
       }
-    } catch(e) { console.error('Save failed:', e); }
+    } catch(e) {
+      console.error('Save failed:', e);
+      alert('Workout save failed: ' + (e?.message || String(e)));
+    }
     finally { setSaving(false); }
   };
 

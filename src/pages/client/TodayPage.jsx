@@ -287,6 +287,13 @@ export default function TodayPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // Re-fetch when user navigates back to this tab (e.g. after completing a workout)
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchData(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchData]);
+
   const openModal  = (setShow, setVisible) => { setShow(true);  requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true))); };
   const closeModal = (setShow, setVisible, delay = 300) => { setVisible(false); setTimeout(() => setShow(false), delay); };
 
