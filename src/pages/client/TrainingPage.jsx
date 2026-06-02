@@ -825,9 +825,8 @@ function SessionPickerModal({ sessions, onPick, onClose }) {
 
 // ─── Rest Timer (auto-starts after a set is completed) ───────────────────────
 function RestTimer({ seconds, onDone }) {
-  const { useState: us, useEffect: ue } = window.__reactHooks || {};
-  const [remaining, setRemaining] = React.useState(seconds);
-  React.useEffect(() => {
+  const [remaining, setRemaining] = useState(seconds);
+  useEffect(() => {
     if (remaining <= 0) { onDone(); return; }
     const t = setTimeout(() => setRemaining(r => r - 1), 1000);
     return () => clearTimeout(t);
@@ -871,10 +870,10 @@ function RestTimer({ seconds, onDone }) {
 
 // ─── Stopwatch (for time-based exercises) ────────────────────────────────────
 function Stopwatch() {
-  const [running, setRunning] = React.useState(false);
-  const [elapsed, setElapsed] = React.useState(0);
-  const startRef = React.useRef(null);
-  React.useEffect(() => {
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const startRef = useRef(null);
+  useEffect(() => {
     if (!running) return;
     const t = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(t);
@@ -916,7 +915,7 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
   const doneSets = sets.filter(s=>s.done).length;
   const borderColor = isFlagged ? 'rgba(251,191,36,0.35)' : allDone ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)';
   const mcColor = MUSCLE_COLORS[exercise.muscleGroup] || '#64748b';
-  const [restActive, setRestActive] = React.useState(false);
+  const [restActive, setRestActive] = useState(false);
 
   // Detect time-based exercise: reps field contains 'sec', 'min', 's', or metric=time
   const repsStr = String(exercise.reps || '');
