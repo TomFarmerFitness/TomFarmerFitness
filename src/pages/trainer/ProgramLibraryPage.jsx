@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { readSheet, appendToSheet } from '../../utils/sheets';
+import { readSheet, appendToSheet, upsertRow, invalidateCache } from '../../utils/sheets';
 import config from '../../config';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -1218,17 +1218,18 @@ export default function ProgramLibraryPage() {
   // Assign to clients — store ProgramID + TrainingDays directly on the Client row
   const handleAssign = async (programId, clientIds, trainingDays) => {
     const daysStr = (trainingDays || []).join(',');
-    // Assign selected clients
+    // Assign selected clients — upsertRow from sheets.js invalidates cache automatically
     for (const cid of clientIds) {
-      await upsertSheetRow('Clients', 'ClientID', cid, { ProgramID: programId, TrainingDays: daysStr });
+      await upsertRow('Clients', 'ClientID', cid, { ProgramID: programId, TrainingDays: daysStr });
     }
     // Clear program from unselected clients that previously had this program
     const previouslyAssigned = clients.filter(
       c => c.ProgramID === programId && !clientIds.includes(c.ClientID)
     );
     for (const c of previouslyAssigned) {
-      await upsertSheetRow('Clients', 'ClientID', c.ClientID, { ProgramID: '', TrainingDays: '' });
+      await upsertRow('Clients', 'ClientID', c.ClientID, { ProgramID: '', TrainingDays: '' });
     }
+    invalidateCache('Clients');
     await fetchData(); // refresh
   };
 

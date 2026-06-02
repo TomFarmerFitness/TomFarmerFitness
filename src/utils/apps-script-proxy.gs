@@ -105,9 +105,19 @@ function doPost(e) {
       var sheet = ss.getSheetByName(data.tab);
       if (!sheet) throw new Error("Tab '" + data.tab + "' not found");
 
-      var lastCol  = sheet.getLastColumn();
+      // Ensure any columns in data.row that don't exist yet are added as new headers
+      var lastCol = sheet.getLastColumn();
+      var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+      var newKeys = Object.keys(data.row).filter(function(k) { return headers.indexOf(k) < 0; });
+      if (newKeys.length > 0) {
+        newKeys.forEach(function(k) {
+          sheet.getRange(1, lastCol + 1).setValue(k);
+          headers.push(k);
+          lastCol++;
+        });
+      }
+
       var lastRow  = sheet.getLastRow();
-      var headers  = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
       var colIndex = headers.indexOf(data.idColumn);
       if (colIndex < 0) throw new Error("Column '" + data.idColumn + "' not found");
 
