@@ -912,6 +912,7 @@ function Stopwatch() {
 // ─── How to perform section ──────────────────────────────────────────────────
 function HowToSection({ libraryEx }) {
   const [expanded, setExpanded] = useState(false);
+  const hasContent = libraryEx?.HowToPerform || libraryEx?.VideoURL;
   return (
     <div style={{ marginTop: '8px' }}>
       <button onClick={() => setExpanded(e => !e)} style={{
@@ -927,12 +928,16 @@ function HowToSection({ libraryEx }) {
           background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '10px 12px',
           marginTop: '6px', border: '1px solid rgba(255,255,255,0.06)',
         }}>
-          {libraryEx.HowToPerform && (
+          {libraryEx?.HowToPerform ? (
             <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 8px' }}>
               {libraryEx.HowToPerform}
             </p>
+          ) : (
+            <p style={{ fontSize: '12px', color: '#475569', lineHeight: 1.6, margin: '0 0 8px', fontStyle: 'italic' }}>
+              No instructions added yet. Ask your trainer to update the exercise library.
+            </p>
           )}
-          {libraryEx.VideoURL && (
+          {libraryEx?.VideoURL && (
             <a href={libraryEx.VideoURL} target="_blank" rel="noopener noreferrer" style={{
               display: 'inline-flex', alignItems: 'center', gap: '5px',
               fontSize: '11px', fontWeight: '700', color: '#f97316',
@@ -1085,9 +1090,7 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
       )}
 
       {/* How to perform — expandable */}
-      {libraryEx && (libraryEx.HowToPerform || libraryEx.VideoURL) && (
-        <HowToSection libraryEx={libraryEx} />
-      )}
+      {libraryEx && <HowToSection libraryEx={libraryEx} />}
     </div>
   );
 }
@@ -1179,7 +1182,11 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
           isFlagged={!!(injuredMuscles && (ex.muscleGroup||'').toLowerCase().includes(injuredMuscles.split(' ')[0]))}
           soreWarning={sorenessMuscles.includes((ex.muscleGroup||'').toLowerCase())}
           niggleFlag={!!niggleFlags[ex.name]}
-          libraryEx={allExercises.find(e => e.Name?.toLowerCase() === ex.name?.toLowerCase())}
+          libraryEx={allExercises.find(e => {
+              const a = (e.Name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+              const b = (ex.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+              return a === b || a.includes(b) || b.includes(a);
+            })}
         />
       ))}
 
