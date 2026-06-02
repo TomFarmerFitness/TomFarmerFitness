@@ -823,12 +823,111 @@ function SessionPickerModal({ sessions, onPick, onClose }) {
   );
 }
 
+// ─── Rest Timer (auto-starts after a set is completed) ───────────────────────
+function RestTimer({ seconds, onDone }) {
+  const { useState: us, useEffect: ue } = window.__reactHooks || {};
+  const [remaining, setRemaining] = React.useState(seconds);
+  React.useEffect(() => {
+    if (remaining <= 0) { onDone(); return; }
+    const t = setTimeout(() => setRemaining(r => r - 1), 1000);
+    return () => clearTimeout(t);
+  }, [remaining]);
+  const pct = ((seconds - remaining) / seconds) * 100;
+  const mins = Math.floor(remaining / 60);
+  const secs = remaining % 60;
+  return (
+    <div style={{
+      background:'rgba(249,115,22,0.08)',border:'1px solid rgba(249,115,22,0.25)',
+      borderRadius:'10px',padding:'10px 14px',marginTop:'8px',
+      display:'flex',alignItems:'center',gap:'12px',
+    }}>
+      <div style={{position:'relative',width:'36px',height:'36px',flexShrink:0}}>
+        <svg width="36" height="36" style={{transform:'rotate(-90deg)'}}>
+          <circle cx="18" cy="18" r="15" fill="none" stroke="rgba(249,115,22,0.15)" strokeWidth="3"/>
+          <circle cx="18" cy="18" r="15" fill="none" stroke="#f97316" strokeWidth="3"
+            strokeDasharray={`${2*Math.PI*15}`}
+            strokeDashoffset={`${2*Math.PI*15*(1-pct/100)}`}
+            style={{transition:'stroke-dashoffset 1s linear'}}/>
+        </svg>
+        <span style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
+          fontSize:'9px',fontWeight:'800',color:'#f97316'}}>
+          {mins > 0 ? `${mins}:${String(secs).padStart(2,'0')}` : secs}
+        </span>
+      </div>
+      <div style={{flex:1}}>
+        <div style={{fontSize:'12px',fontWeight:'700',color:'#f97316'}}>Rest period</div>
+        <div style={{fontSize:'11px',color:'#64748b'}}>
+          {mins > 0 ? `${mins}m ${secs}s` : `${secs}s`} remaining
+        </div>
+      </div>
+      <button onClick={onDone} style={{
+        background:'rgba(249,115,22,0.15)',border:'1px solid rgba(249,115,22,0.3)',
+        borderRadius:'7px',padding:'5px 10px',color:'#f97316',
+        fontSize:'11px',fontWeight:'700',cursor:'pointer',
+      }}>Skip</button>
+    </div>
+  );
+}
+
+// ─── Stopwatch (for time-based exercises) ────────────────────────────────────
+function Stopwatch() {
+  const [running, setRunning] = React.useState(false);
+  const [elapsed, setElapsed] = React.useState(0);
+  const startRef = React.useRef(null);
+  React.useEffect(() => {
+    if (!running) return;
+    const t = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(t);
+  }, [running]);
+  const mins = Math.floor(elapsed / 60);
+  const secs = elapsed % 60;
+  const reset = () => { setRunning(false); setElapsed(0); };
+  return (
+    <div style={{
+      background:'rgba(99,102,241,0.08)',border:'1px solid rgba(99,102,241,0.25)',
+      borderRadius:'10px',padding:'10px 14px',marginTop:'6px',
+      display:'flex',alignItems:'center',gap:'12px',
+    }}>
+      <div style={{fontSize:'22px',fontWeight:'800',color:'#818cf8',minWidth:'64px',fontVariantNumeric:'tabular-nums'}}>
+        {String(mins).padStart(2,'0')}:{String(secs).padStart(2,'0')}
+      </div>
+      <div style={{flex:1,fontSize:'11px',color:'#64748b'}}>Stopwatch</div>
+      <button onClick={() => setRunning(r => !r)} style={{
+        background: running ? 'rgba(239,68,68,0.15)' : 'rgba(99,102,241,0.15)',
+        border: `1px solid ${running ? 'rgba(239,68,68,0.3)' : 'rgba(99,102,241,0.3)'}`,
+        borderRadius:'7px',padding:'5px 12px',
+        color: running ? '#fca5a5' : '#818cf8',
+        fontSize:'11px',fontWeight:'700',cursor:'pointer',
+      }}>{running ? 'Pause' : elapsed > 0 ? 'Resume' : 'Start'}</button>
+      {elapsed > 0 && !running && (
+        <button onClick={reset} style={{
+          background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',
+          borderRadius:'7px',padding:'5px 10px',color:'#64748b',
+          fontSize:'11px',fontWeight:'700',cursor:'pointer',
+        }}>Reset</button>
+      )}
+    </div>
+  );
+}
+
 // ─── Exercise card (used in ActiveWorkout) ────────────────────────────────────
-function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false }) {
+function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false, restSeconds=90 }) {
   const allDone = sets.every(s=>s.done);
   const doneSets = sets.filter(s=>s.done).length;
   const borderColor = isFlagged ? 'rgba(251,191,36,0.35)' : allDone ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)';
   const mcColor = MUSCLE_COLORS[exercise.muscleGroup] || '#64748b';
+  const [restActive, setRestActive] = React.useState(false);
+
+  // Detect time-based exercise: reps field contains 'sec', 'min', 's', or metric=time
+  const repsStr = String(exercise.reps || '');
+  const isTimeBased = /sec|min|\ds$|time/i.test(repsStr) || exercise.metric === 'time';
+
+  const handleToggleDone = (idx, s) => {
+    const nowDone = !s.done;
+    onUpdateSet(idx, {...s, done: nowDone});
+    // Start rest timer when marking a set as done (not when undoing)
+    if (nowDone && !allDone) setRestActive(true);
+  };
 
   return (
     <div style={{
@@ -883,6 +982,9 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
         </div>
       )}
 
+      {/* Stopwatch for time-based exercises */}
+      {isTimeBased && <Stopwatch />}
+
       {/* Set rows */}
       {!compact && sets.map((s, idx) => (
         <div key={idx} style={{
@@ -898,9 +1000,9 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
 
           <div style={{flex:1,display:'flex',gap:'6px'}}>
             <div style={{flex:1}}>
-              <div style={{fontSize:'9px',color:'#475569',marginBottom:'3px',textAlign:'center',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.4px'}}>Reps</div>
+              <div style={{fontSize:'9px',color:'#475569',marginBottom:'3px',textAlign:'center',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.4px'}}>{isTimeBased ? 'Duration' : 'Reps'}</div>
               <input
-                type="number" inputMode="numeric" value={s.reps}
+                type={isTimeBased ? 'text' : 'number'} inputMode={isTimeBased ? 'text' : 'numeric'} value={s.reps}
                 onChange={e=>onUpdateSet(idx,{...s,reps:e.target.value})}
                 disabled={s.done}
                 style={{
@@ -911,24 +1013,26 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
                 }}
               />
             </div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:'9px',color:'#475569',marginBottom:'3px',textAlign:'center',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.4px'}}>Weight kg</div>
-              <input
-                type="number" inputMode="decimal" value={s.weight}
-                onChange={e=>onUpdateSet(idx,{...s,weight:e.target.value})}
-                disabled={s.done}
-                style={{
-                  width:'100%',padding:'8px 6px',textAlign:'center',
-                  background: s.done ? 'rgba(34,197,94,0.07)' : '#0f172a',
-                  border:`1px solid ${s.done ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.09)'}`,
-                  borderRadius:'8px',color:'#f8fafc',fontSize:'14px',fontWeight:'700',outline:'none',
-                }}
-              />
-            </div>
+            {!isTimeBased && (
+              <div style={{flex:1}}>
+                <div style={{fontSize:'9px',color:'#475569',marginBottom:'3px',textAlign:'center',fontWeight:'600',textTransform:'uppercase',letterSpacing:'0.4px'}}>Weight kg</div>
+                <input
+                  type="number" inputMode="decimal" value={s.weight}
+                  onChange={e=>onUpdateSet(idx,{...s,weight:e.target.value})}
+                  disabled={s.done}
+                  style={{
+                    width:'100%',padding:'8px 6px',textAlign:'center',
+                    background: s.done ? 'rgba(34,197,94,0.07)' : '#0f172a',
+                    border:`1px solid ${s.done ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.09)'}`,
+                    borderRadius:'8px',color:'#f8fafc',fontSize:'14px',fontWeight:'700',outline:'none',
+                  }}
+                />
+              </div>
+            )}
           </div>
 
           <button
-            onClick={()=>onUpdateSet(idx,{...s,done:!s.done})}
+            onClick={()=>handleToggleDone(idx, s)}
             style={{
               width:'36px',height:'36px',borderRadius:'9px',flexShrink:0,
               background: s.done ? '#22c55e' : 'rgba(255,255,255,0.06)',
@@ -938,6 +1042,11 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
             }}>{s.done ? '✓' : '○'}</button>
         </div>
       ))}
+
+      {/* Rest timer — shows after completing a set */}
+      {restActive && !allDone && (
+        <RestTimer seconds={restSeconds} onDone={() => setRestActive(false)} />
+      )}
     </div>
   );
 }
@@ -967,7 +1076,7 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
   };
 
   return (
-    <div style={{padding:'16px 16px 120px',fontFamily:"'Inter', system-ui, sans-serif",color:'#f8fafc'}}>
+    <div style={{padding:'16px 16px 32px',fontFamily:"'Inter', system-ui, sans-serif",color:'#f8fafc'}}>
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',gap:'12px',marginBottom:'16px'}}>
         <button onClick={onCancel} style={{
@@ -978,9 +1087,17 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
           <div style={{fontSize:'11px',color:'#f97316',fontWeight:'700',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'2px'}}>Active Workout</div>
           <div style={{fontSize:'17px',fontWeight:'800'}}>{session?.SessionName || 'Workout'}</div>
         </div>
-        <div style={{textAlign:'right'}}>
-          <div style={{fontSize:'18px',fontWeight:'800',color: pct===100 ? '#22c55e' : '#f97316'}}>{pct}%</div>
-          <div style={{fontSize:'10px',color:'#475569'}}>{totalSetsDone}/{totalSetsPlanned} sets</div>
+        <div style={{display:'flex',alignItems:'center',gap:'10px'}}>
+          <button onClick={()=>setShowNiggle(true)} style={{
+            background:'#1e293b', border:'1.5px solid rgba(251,191,36,0.35)',
+            borderRadius:'16px', padding:'6px 11px',
+            color:'#fbbf24', fontSize:'11px', fontWeight:'700',
+            cursor:'pointer', display:'flex', alignItems:'center', gap:'4px',
+          }}>🤕 Niggle</button>
+          <div style={{textAlign:'right'}}>
+            <div style={{fontSize:'18px',fontWeight:'800',color: pct===100 ? '#22c55e' : '#f97316'}}>{pct}%</div>
+            <div style={{fontSize:'10px',color:'#475569'}}>{totalSetsDone}/{totalSetsPlanned} sets</div>
+          </div>
         </div>
       </div>
 
@@ -1081,30 +1198,15 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
         </div>
       )}
 
-      {/* Complete button */}
+      {/* Complete button — in scroll flow, not fixed */}
       <button onClick={handleComplete} disabled={saving} style={{
-        position:'fixed',bottom:'74px',
-        left:'50%',transform:'translateX(-50%)',
-        width:'calc(100% - 32px)',maxWidth:'398px',
-        padding:'15px',background: saving ? 'rgba(249,115,22,0.4)' : '#f97316',
-        border:'none',borderRadius:'13px',color:'#fff',
+        width:'100%', marginTop:'16px',
+        padding:'16px',background: saving ? 'rgba(249,115,22,0.4)' : '#f97316',
+        border:'none',borderRadius:'14px',color:'#fff',
         fontSize:'15px',fontWeight:'800',cursor: saving ? 'not-allowed' : 'pointer',
-        zIndex:50, boxShadow:'0 8px 24px rgba(249,115,22,0.35)',
+        boxShadow:'0 8px 24px rgba(249,115,22,0.35)',
       }}>
         {saving ? 'Saving workout…' : 'Complete Workout ✓'}
-      </button>
-
-      {/* Niggle button — floating bottom-right */}
-      <button onClick={()=>setShowNiggle(true)} style={{
-        position:'fixed', bottom:'136px', right:'16px',
-        background:'#1e293b', border:'1.5px solid rgba(251,191,36,0.35)',
-        borderRadius:'20px', padding:'9px 14px',
-        color:'#fbbf24', fontSize:'12px', fontWeight:'700',
-        cursor:'pointer', zIndex:51,
-        boxShadow:'0 4px 16px rgba(0,0,0,0.4)',
-        display:'flex', alignItems:'center', gap:'5px',
-      }}>
-        🤕 Niggle?
       </button>
 
       {/* Niggle modal */}

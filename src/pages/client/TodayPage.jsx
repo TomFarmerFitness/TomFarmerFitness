@@ -448,7 +448,7 @@ export default function TodayPage() {
       }}>
         <div>
           <div style={{ fontSize: '13px', fontWeight: '700', color: '#f8fafc' }}>
-            {todayWeight ? `${todayWeight.WeightKg} kg logged &#x2713;` : "Log today's weight"}
+            {todayWeight ? `${todayWeight.WeightKg ? todayWeight.WeightKg + ' kg' : 'Weight'} logged ✓` : "Log today's weight"}
           </div>
           <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
             {todayWeight ? 'Great work tracking progress' : 'Daily check-in keeps you on track'}
