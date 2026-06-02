@@ -114,7 +114,6 @@ function Skeleton({ height = 100, mb = 12 }) {
 
 // ── Workout sub-cards ─────────────────────────────────────────────────────
 function CompletionCard({ log }) {
-  const sets = log?.TotalSets ? ` · ${log.TotalSets} sets done` : '';
   return (
     <div style={{
       background: 'linear-gradient(135deg,rgba(34,197,94,0.12),rgba(21,128,61,0.07))',
@@ -134,7 +133,7 @@ function CompletionCard({ log }) {
           {log?.WorkoutName || "Today's session"}
         </div>
         <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-          Great work today &#x1F4AA;{sets}
+          Great work today &#x1F4AA;{log?.TotalSets ? ` · ${log.TotalSets} sets done` : ''}
         </div>
       </div>
     </div>
@@ -220,7 +219,6 @@ export default function TodayPage() {
 
   const [showWeightLog, setShowWeightLog] = useState(false);
   const [macroNotif,    setMacroNotif]    = useState(null);   // pending macro adjustment notification
-  const [todayWorkoutLog, setTodayWorkoutLog] = useState(null);
   const [wlVisible,     setWlVisible]     = useState(false);
   const [wlWeight,      setWlWeight]      = useState('');
   const [wlSaving,      setWlSaving]      = useState(false);
@@ -596,4 +594,9 @@ export default function TodayPage() {
               cursor: wlSaving || !wlWeight ? 'not-allowed' : 'pointer',
             }}>{wlSaving ? 'Saving…' : 'Save Weight'}</button>
           </div>
-        <
+        </div>
+      )}
+
+    </div>
+  );
+}
