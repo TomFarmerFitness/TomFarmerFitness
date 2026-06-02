@@ -111,22 +111,29 @@ function doPost(e) {
       var colIndex = headers.indexOf(data.idColumn);
       if (colIndex < 0) throw new Error("Column '" + data.idColumn + "' not found");
 
-      var rowValues = headers.map(function(h) {
-        return data.row[h] !== undefined ? data.row[h] : '';
-      });
-
       var found = false;
       if (lastRow >= 2) {
         var ids = sheet.getRange(2, colIndex + 1, lastRow - 1, 1).getValues();
         for (var i = 0; i < ids.length; i++) {
           if (String(ids[i][0]) === String(data.id)) {
+            // Merge: read existing row, overwrite only fields present in data.row
+            var existing = sheet.getRange(i + 2, 1, 1, lastCol).getValues()[0];
+            var rowValues = headers.map(function(h, idx) {
+              return data.row[h] !== undefined ? data.row[h] : existing[idx];
+            });
             sheet.getRange(i + 2, 1, 1, lastCol).setValues([rowValues]);
             found = true;
             break;
           }
         }
       }
-      if (!found) { sheet.appendRow(rowValues); }
+      if (!found) {
+        // Insert: blank any missing fields
+        var rowValues = headers.map(function(h) {
+          return data.row[h] !== undefined ? data.row[h] : '';
+        });
+        sheet.appendRow(rowValues);
+      }
       return ok({ upserted: true, updated: found });
     }
 
