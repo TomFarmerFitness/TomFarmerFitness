@@ -29,6 +29,20 @@ function doPost(e) {
       if (!sheet) throw new Error("Tab '" + data.tab + "' not found");
 
       var lastCol = sheet.getLastColumn();
+      // Auto-create any missing column headers
+      if (lastCol === 0) {
+        // Empty sheet — write all keys as headers in row 1
+        var allKeys = Object.keys(data.row);
+        allKeys.forEach(function(k, i) { sheet.getRange(1, i + 1).setValue(k); });
+        lastCol = allKeys.length;
+      } else {
+        var existingHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+        var newKeys = Object.keys(data.row).filter(function(k) { return existingHeaders.indexOf(k) < 0; });
+        newKeys.forEach(function(k) {
+          lastCol++;
+          sheet.getRange(1, lastCol).setValue(k);
+        });
+      }
       var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
       var row     = headers.map(function(h) {
         return data.row[h] !== undefined ? data.row[h] : '';
