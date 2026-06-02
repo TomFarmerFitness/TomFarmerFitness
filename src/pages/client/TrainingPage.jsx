@@ -1724,29 +1724,45 @@ export default function TrainingPage() {
 
   const handleEditEntries = () => {
     const log = selectedLog;
+    // Parse stored exercises from the completed log
     let exs = [];
     try {
       const raw = log?.ExercisesCompleted;
       if (raw && raw.startsWith('[')) exs = JSON.parse(raw);
     } catch {}
-    setActiveSession(selectedSession);
+
+    // Fall back to the session's planned exercises if log has none
+    if (exs.length === 0 && selectedSession) {
+      let planned = [];
+      try { planned = typeof selectedSession.exercises === 'string' ? JSON.parse(selectedSession.exercises) : (selectedSession.exercises || []); } catch {}
+      exs = planned;
+    }
+
+    // Normalise each exercise — ensure sets is a number, not an array
+    const normExs = exs.map(ex => ({
+      ...ex,
+      sets: typeof ex.sets === 'number' ? ex.sets : (Array.isArray(ex.sets) ? ex.sets.length : (parseInt(ex.sets) || 3)),
+    }));
+
+    // Build activeSets state — pre-fill from stored set data if available
+    const s = {};
+    exs.forEach((ex, i) => {
+      const norm = normExs[i];
+      if (Array.isArray(ex.sets) && ex.sets.length > 0) {
+        // Logged sets from completed workout
+        s[ex.name] = ex.sets.map(st => ({ reps: String(st.reps||''), weight: String(st.weight||''), done: true }));
+      } else {
+        // Planned sets — blank slate
+        s[ex.name] = Array.from({ length: norm.sets || 3 }, () => ({ reps: String(ex.reps||''), weight: '', done: false }));
+      }
+    });
+
+    setActiveSession(selectedSession || { SessionName: log?.WorkoutName || 'Workout', exercises: [] });
     setActualDate((log?.Date||selectedDate).slice(0,10));
     setAdjustments([]);
     setPreWorkoutData(null);
-    if (exs.length > 0) {
-      setActiveExercises(exs);
-      // Pre-fill logged sets
-      const s = {};
-      exs.forEach(ex=>{
-        s[ex.name] = (ex.sets||[]).length > 0
-          ? ex.sets.map(st=>({...st,done:true}))
-          : Array.from({length:ex.sets_count||3},()=>({reps:'',weight:'',done:false}));
-      });
-      setActiveSets(s);
-    } else {
-      setActiveExercises([]);
-      setActiveSets({});
-    }
+    setActiveExercises(normExs);
+    setActiveSets(s);
     setView('active');
   };
 
