@@ -223,6 +223,184 @@ function WeeklyVolumePanel({ program }) {
   );
 }
 
+
+// ─── Lift Progression Panel ────────────────────────────────────────────────────
+function LiftProgressionPanel({ logs }) {
+  const progressMap = {};
+  logs.forEach(log => {
+    if (log.Status !== 'Completed') return;
+    const dateStr = (log.Date || '').slice(0, 10);
+    if (!dateStr) return;
+    let exs = [];
+    try { exs = JSON.parse(log.ExercisesCompleted || '[]'); } catch {}
+    if (!Array.isArray(exs)) return;
+    exs.forEach(ex => {
+      if (!ex.name) return;
+      const key = ex.name;
+      const doneSets = (ex.sets || []).filter(s => s.done);
+      if (doneSets.length === 0) return;
+      const weights = doneSets.map(s => parseFloat(s.weight) || 0).filter(w => w > 0);
+      const maxWeight = weights.length > 0 ? Math.max(...weights) : 0;
+      const totalReps = doneSets.reduce((n, s) => n + (parseInt(s.reps) || 0), 0);
+      if (!progressMap[key]) progressMap[key] = [];
+      progressMap[key].push({ date: dateStr, maxWeight, totalReps });
+    });
+  });
+
+  // Sort each exercise's entries by date, keep only those with 2+ entries
+  const exercises = Object.entries(progressMap)
+    .map(([name, entries]) => ({
+      name,
+      entries: entries.sort((a, b) => a.date.localeCompare(b.date)),
+    }))
+    .filter(e => e.entries.length >= 2 && e.entries.some(en => en.maxWeight > 0))
+    .sort((a, b) => b.entries.length - a.entries.length)
+    .slice(0, 8);
+
+  if (exercises.length === 0) return null;
+
+  return (
+    <div style={{
+      background: '#1e293b', borderRadius: '12px', padding: '18px 20px',
+      border: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px',
+    }}>
+      <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 14px' }}>
+        Lift Progressions
+        <span style={{ color: '#475569', fontWeight: '400', fontSize: '12px', marginLeft: '8px' }}>
+          {exercises.length} exercise{exercises.length !== 1 ? 's' : ''} tracked
+        </span>
+      </h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {exercises.map(({ name, entries }) => {
+          const withWeight = entries.filter(e => e.maxWeight > 0);
+          const first = withWeight[0]?.maxWeight || 0;
+          const last  = withWeight[withWeight.length - 1]?.maxWeight || 0;
+          const diff  = +(last - first).toFixed(1);
+          const diffColor = diff > 0 ? '#22c55e' : diff < 0 ? '#f87171' : '#94a3b8';
+          return (
+            <div key={name} style={{
+              background: 'rgba(255,255,255,0.03)', borderRadius: '8px',
+              padding: '10px 12px', border: '1px solid rgba(255,255,255,0.05)',
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '7px' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#f1f5f9' }}>{name}</div>
+                {diff !== 0 && (
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: diffColor }}>
+                    {diff > 0 ? '+' : ''}{diff}kg
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', alignItems: 'center' }}>
+                {withWeight.map((en, i) => (
+                  <span key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <span style={{
+                      background: i === withWeight.length - 1 ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.07)',
+                      border: `1px solid ${i === withWeight.length - 1 ? 'rgba(249,115,22,0.4)' : 'rgba(255,255,255,0.08)'}`,
+                      borderRadius: '6px', padding: '3px 8px',
+                      fontSize: '12px', fontWeight: '600',
+                      color: i === withWeight.length - 1 ? '#f97316' : '#94a3b8',
+                    }}>{en.maxWeight}kg</span>
+                    {i < withWeight.length - 1 && (
+                      <span style={{ fontSize: '9px', color: '#334155' }}>→</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ─── Weekly Sets Panel ─────────────────────────────────────────────────────────
+const WEEKLY_MUSCLES = ['Biceps','Triceps','Back','Chest','Shoulders','Quads','Hamstrings','Calves','Core'];
+
+function WeeklySetsPanel({ logs }) {
+  // Get current week Mon-Sun
+  const today = new Date();
+  const dow = today.getDay();
+  const mon = new Date(today);
+  mon.setDate(today.getDate() - (dow === 0 ? 6 : dow - 1));
+  mon.setHours(0, 0, 0, 0);
+  const sun = new Date(mon);
+  sun.setDate(mon.getDate() + 6);
+  sun.setHours(23, 59, 59, 999);
+
+  const setCounts = {};
+  WEEKLY_MUSCLES.forEach(m => { setCounts[m] = 0; });
+
+  logs.forEach(log => {
+    if (log.Status !== 'Completed') return;
+    const d = new Date((log.Date || '').slice(0, 10) + 'T12:00:00');
+    if (isNaN(d) || d < mon || d > sun) return;
+    let exs = [];
+    try { exs = JSON.parse(log.ExercisesCompleted || '[]'); } catch {}
+    if (!Array.isArray(exs)) return;
+    exs.forEach(ex => {
+      const mg = (ex.muscleGroup || '').trim();
+      // Match muscle group to our list (case-insensitive partial match)
+      const match = WEEKLY_MUSCLES.find(m => m.toLowerCase() === mg.toLowerCase() ||
+        mg.toLowerCase().includes(m.toLowerCase()));
+      if (!match) return;
+      const doneSets = (ex.sets || []).filter(s => s.done).length;
+      setCounts[match] = (setCounts[match] || 0) + doneSets;
+    });
+  });
+
+  const hasData = Object.values(setCounts).some(v => v > 0);
+
+  return (
+    <div style={{
+      background: '#1e293b', borderRadius: '12px', padding: '18px 20px',
+      border: '1px solid rgba(255,255,255,0.06)', marginBottom: '20px',
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+        <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>
+          Weekly Sets by Muscle
+        </h3>
+        <div style={{ fontSize: '11px', color: '#475569' }}>Target: 10–15 sets</div>
+      </div>
+      {!hasData ? (
+        <div style={{ fontSize: '13px', color: '#475569', textAlign: 'center', padding: '12px 0' }}>
+          No sets logged this week yet.
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {WEEKLY_MUSCLES.map(muscle => {
+            const sets = setCounts[muscle] || 0;
+            const pct = Math.min((sets / 15) * 100, 100);
+            const color = sets >= 10 ? '#22c55e' : sets >= 5 ? '#f59e0b' : '#ef4444';
+            return (
+              <div key={muscle}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>{muscle}</span>
+                  <span style={{ fontSize: '12px', fontWeight: '600', color }}>{sets} sets</span>
+                </div>
+                <div style={{ height: '5px', background: 'rgba(255,255,255,0.07)', borderRadius: '99px', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%', width: `${pct}%`, borderRadius: '99px',
+                    background: color, transition: 'width 0.5s ease',
+                  }} />
+                </div>
+              </div>
+            );
+          })}
+          <div style={{ display: 'flex', gap: '12px', marginTop: '6px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+            {[['#22c55e','≥10 sets on track'],['#f59e0b','5–9 building'],['#ef4444','<5 needs work']].map(([c,label]) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: c, flexShrink: 0 }} />
+                <span style={{ fontSize: '10px', color: '#64748b' }}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClientDetailPage() {
   const { clientId } = useParams();
   const navigate     = useNavigate();
@@ -590,6 +768,12 @@ export default function ClientDetailPage() {
 
           {/* Weekly volume */}
           {assignedProgram && <WeeklyVolumePanel program={assignedProgram} />}
+
+          {/* Lift progressions */}
+          <LiftProgressionPanel logs={logs} />
+
+          {/* Weekly sets by muscle */}
+          <WeeklySetsPanel logs={logs} />
 
           {/* Recent workout log */}
           <div style={cardStyle}>

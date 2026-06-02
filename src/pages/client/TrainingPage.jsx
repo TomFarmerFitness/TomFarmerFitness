@@ -909,8 +909,45 @@ function Stopwatch() {
   );
 }
 
+// ─── How to perform section ──────────────────────────────────────────────────
+function HowToSection({ libraryEx }) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div style={{ marginTop: '8px' }}>
+      <button onClick={() => setExpanded(e => !e)} style={{
+        background: 'none', border: 'none', cursor: 'pointer',
+        fontSize: '11px', fontWeight: '700', color: '#64748b',
+        padding: '4px 0', display: 'flex', alignItems: 'center', gap: '5px',
+      }}>
+        <span>📋 How to perform</span>
+        <span style={{ fontSize: '9px', color: '#475569' }}>{expanded ? '▲' : '▼'}</span>
+      </button>
+      {expanded && (
+        <div style={{
+          background: 'rgba(0,0,0,0.3)', borderRadius: '8px', padding: '10px 12px',
+          marginTop: '6px', border: '1px solid rgba(255,255,255,0.06)',
+        }}>
+          {libraryEx.HowToPerform && (
+            <p style={{ fontSize: '12px', color: '#94a3b8', lineHeight: 1.6, margin: '0 0 8px' }}>
+              {libraryEx.HowToPerform}
+            </p>
+          )}
+          {libraryEx.VideoURL && (
+            <a href={libraryEx.VideoURL} target="_blank" rel="noopener noreferrer" style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              fontSize: '11px', fontWeight: '700', color: '#f97316',
+              background: 'rgba(249,115,22,0.1)', border: '1px solid rgba(249,115,22,0.25)',
+              borderRadius: '6px', padding: '5px 10px', textDecoration: 'none',
+            }}>▶ Watch video</a>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Exercise card (used in ActiveWorkout) ────────────────────────────────────
-function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false, restSeconds=90 }) {
+function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false, restSeconds=90, libraryEx }) {
   const allDone = sets.every(s=>s.done);
   const doneSets = sets.filter(s=>s.done).length;
   const borderColor = isFlagged ? 'rgba(251,191,36,0.35)' : allDone ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)';
@@ -1046,13 +1083,18 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
       {restActive && !allDone && (
         <RestTimer seconds={restSeconds} onDone={() => setRestActive(false)} />
       )}
+
+      {/* How to perform — expandable */}
+      {libraryEx && (libraryEx.HowToPerform || libraryEx.VideoURL) && (
+        <HowToSection libraryEx={libraryEx} />
+      )}
     </div>
   );
 }
 
 // ─── Active Workout view ──────────────────────────────────────────────────────
 function ActiveWorkout({ session, exercises, sets, adjustments, preData,
-  onUpdateSet, onAddExercise, onComplete, onCancel, onNiggleLog, saving }) {
+  onUpdateSet, onAddExercise, onComplete, onCancel, onNiggleLog, saving, allExercises=[] }) {
 
   const [showAddEx,   setShowAddEx]  = useState(false);
   const [newEx,       setNewEx]      = useState({name:'',sets:'3',reps:'10',weight:'',muscleGroup:''});
@@ -1137,6 +1179,7 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
           isFlagged={!!(injuredMuscles && (ex.muscleGroup||'').toLowerCase().includes(injuredMuscles.split(' ')[0]))}
           soreWarning={sorenessMuscles.includes((ex.muscleGroup||'').toLowerCase())}
           niggleFlag={!!niggleFlags[ex.name]}
+          libraryEx={allExercises.find(e => e.Name?.toLowerCase() === ex.name?.toLowerCase())}
         />
       ))}
 
@@ -1585,7 +1628,7 @@ export default function TrainingPage() {
   // Derived
   const selectedDayIdx   = weekDays.findIndex(d=>d.date===selectedDate);
   const selectedSession  = selectedDayIdx >= 0 ? getSessionForDay(sessions, selectedDayIdx, daysPerWeek, trainingDays) : null;
-  const selectedLog      = workoutLogs.find(l=>(l.Date||'').slice(0,10)===selectedDate && l.Status==='Completed');
+  const selectedLog      = workoutLogs.find(l => l.Status==='Completed' && ((l.Date||'').slice(0,10)===selectedDate || (selectedSession && l.WorkoutName===selectedSession.SessionName && (l.Date||'').slice(0,10)===selectedDate)));
   const weekStats        = computeWeekStats(workoutLogs, weekDays);
   const scheduledThisWeek= weekDays.filter((_,i)=>!!getSessionForDay(sessions,i,daysPerWeek,trainingDays)).length;
 
@@ -1780,7 +1823,7 @@ export default function TrainingPage() {
         setProgressionItems(progItems);
         setShowProgression(true);
       }
-    } catch { alert('Failed to save. Please try again.'); }
+    } catch(e) { console.error('Save failed:', e); }
     finally { setSaving(false); }
   };
 
@@ -1846,6 +1889,7 @@ export default function TrainingPage() {
         onCancel={()=>setView('weekly')}
         onNiggleLog={handleNiggleLog}
         saving={saving}
+        allExercises={allExercises}
       />
     );
   }
