@@ -92,6 +92,16 @@ const INJURY_KEYWORD_MAP = {
   pec:           ['Chest'],
   trap:          ['Back', 'Shoulders'],
   rotator:       ['Shoulders'],
+  'inner thigh': ['Legs', 'Glutes'],
+  thigh:         ['Legs'],
+  adductor:      ['Legs', 'Glutes'],
+  glute:         ['Glutes'],
+  'lower leg':   ['Legs'],
+  forearm:       ['Arms'],
+  bicep:         ['Arms'],
+  tricep:        ['Arms'],
+  chest:         ['Chest'],
+  lat:           ['Back'],
 };
 
 function swapInjuredExercises(exercises, injuryNotes, allExercises) {
@@ -104,10 +114,11 @@ function swapInjuredExercises(exercises, injuryNotes, allExercises) {
 
   return exercises.map(ex => {
     const mg = (ex.muscleGroup || '').trim();
-    if (!affected.has(mg)) return ex;
+    const isAffected = Array.from(affected).some(a => mg.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(mg.toLowerCase()));
+    if (!isAffected) return ex;
     // Prefer Machine > Cable > Bodyweight as safer alternatives
     const alt = allExercises.find(ae =>
-      (ae.PrimaryMuscle || '') === mg &&
+      Array.from(affected).some(a => (ae.PrimaryMuscle || '').toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes((ae.PrimaryMuscle || '').toLowerCase())) &&
       ['Machine', 'Cable', 'Bodyweight'].includes(ae.EquipmentNeeded || '') &&
       (ae.Name || '').toLowerCase() !== (ex.name || '').toLowerCase()
     );
@@ -951,8 +962,72 @@ function HowToSection({ libraryEx }) {
   );
 }
 
+// ─── Swap Modal ───────────────────────────────────────────────────────────────
+function SwapModal({ exercise, allExercises, onConfirm, onClose }) {
+  const [search, setSearch] = useState('');
+  const mg = (exercise.muscleGroup || '').toLowerCase();
+
+  const filtered = allExercises
+    .filter(e => {
+      if ((e.Name || '').toLowerCase() === (exercise.name || '').toLowerCase()) return false;
+      const q = search.toLowerCase();
+      return !q || (e.Name || '').toLowerCase().includes(q) || (e.PrimaryMuscle || '').toLowerCase().includes(q);
+    })
+    .sort((a, b) => {
+      const aMg = (a.PrimaryMuscle || '').toLowerCase();
+      const bMg = (b.PrimaryMuscle || '').toLowerCase();
+      const aMatch = aMg.includes(mg) || mg.includes(aMg);
+      const bMatch = bMg.includes(mg) || mg.includes(bMg);
+      if (aMatch && !bMatch) return -1;
+      if (!aMatch && bMatch) return 1;
+      return (a.Name || '').localeCompare(b.Name || '');
+    })
+    .slice(0, 40);
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(3px)', display:'flex', alignItems:'flex-end' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width:'100%', maxWidth:'430px', margin:'0 auto', background:'#1e293b', borderRadius:'20px 20px 0 0', padding:'20px 16px 36px', border:'1px solid rgba(255,255,255,0.1)', maxHeight:'80vh', display:'flex', flexDirection:'column' }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px' }}>
+          <div>
+            <div style={{ fontSize:'15px', fontWeight:'800', color:'#f8fafc' }}>⇄ Swap Exercise</div>
+            <div style={{ fontSize:'12px', color:'#64748b', marginTop:'2px' }}>Replacing: <em>{exercise.name}</em></div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.07)', border:'none', borderRadius:'8px', color:'#94a3b8', fontSize:'18px', width:'32px', height:'32px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+        <input
+          type="text" placeholder="Search exercises..."
+          value={search} onChange={e => setSearch(e.target.value)}
+          autoFocus
+          style={{ padding:'9px 12px', background:'#0f172a', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'9px', color:'#f8fafc', fontSize:'13px', outline:'none', marginBottom:'12px', width:'100%', boxSizing:'border-box' }}
+        />
+        <div style={{ overflowY:'auto', flex:1 }}>
+          {filtered.length === 0 && (
+            <div style={{ textAlign:'center', color:'#475569', fontSize:'13px', padding:'20px 0' }}>No exercises found.</div>
+          )}
+          {filtered.map((e, i) => {
+            const mc = MUSCLE_COLORS[e.PrimaryMuscle] || '#64748b';
+            return (
+              <button key={i} onClick={() => onConfirm(e)} style={{
+                width:'100%', display:'flex', alignItems:'center', justifyContent:'space-between',
+                padding:'11px 12px', marginBottom:'6px', borderRadius:'10px',
+                background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)',
+                cursor:'pointer', textAlign:'left',
+              }}>
+                <div style={{ fontSize:'13px', fontWeight:'600', color:'#e2e8f0' }}>{e.Name}</div>
+                <span style={{ fontSize:'10px', fontWeight:'700', padding:'2px 7px', borderRadius:'5px', background:`${mc}1a`, color:mc, border:`1px solid ${mc}33`, flexShrink:0 }}>{e.PrimaryMuscle}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Exercise card (used in ActiveWorkout) ────────────────────────────────────
-function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false, restSeconds=90, libraryEx }) {
+function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, niggleFlag, compact=false, restSeconds=90, libraryEx, onSwap, allExercises=[] }) {
+  const [showSwap, setShowSwap] = useState(false);
   const allDone = sets.every(s=>s.done);
   const doneSets = sets.filter(s=>s.done).length;
   const borderColor = isFlagged ? 'rgba(251,191,36,0.35)' : allDone ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.06)';
@@ -993,12 +1068,21 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
             </span>
           </div>
         </div>
-        <div style={{
-          fontSize:'11px',fontWeight:'700',
-          color: allDone ? '#22c55e' : '#475569',
-          background: allDone ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.05)',
-          padding:'4px 8px',borderRadius:'6px',flexShrink:0,
-        }}>{doneSets}/{sets.length}</div>
+        <div style={{ display:'flex', alignItems:'center', gap:'6px', flexShrink:0 }}>
+          {onSwap && (
+            <button onClick={() => setShowSwap(true)} style={{
+              background:'rgba(139,92,246,0.12)', border:'1px solid rgba(139,92,246,0.25)',
+              borderRadius:'6px', color:'#a78bfa', fontSize:'11px', fontWeight:'700',
+              padding:'4px 8px', cursor:'pointer',
+            }}>⇄</button>
+          )}
+          <div style={{
+            fontSize:'11px',fontWeight:'700',
+            color: allDone ? '#22c55e' : '#475569',
+            background: allDone ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.05)',
+            padding:'4px 8px',borderRadius:'6px',
+          }}>{doneSets}/{sets.length}</div>
+        </div>
       </div>
 
       {/* Warnings */}
@@ -1091,13 +1175,23 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
 
       {/* How to perform — expandable */}
       {libraryEx && <HowToSection libraryEx={libraryEx} />}
+
+      {/* Swap modal */}
+      {showSwap && (
+        <SwapModal
+          exercise={exercise}
+          allExercises={allExercises}
+          onConfirm={(newEx) => { onSwap && onSwap(newEx); setShowSwap(false); }}
+          onClose={() => setShowSwap(false)}
+        />
+      )}
     </div>
   );
 }
 
 // ─── Active Workout view ──────────────────────────────────────────────────────
 function ActiveWorkout({ session, exercises, sets, adjustments, preData,
-  onUpdateSet, onAddExercise, onComplete, onCancel, onNiggleLog, saving, allExercises=[] }) {
+  onUpdateSet, onAddExercise, onComplete, onCancel, onNiggleLog, onSwapExercise, saving, allExercises=[] }) {
 
   const [showAddEx,   setShowAddEx]  = useState(false);
   const [newEx,       setNewEx]      = useState({name:'',sets:'3',reps:'10',weight:'',muscleGroup:''});
@@ -1187,6 +1281,8 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
               const b = (ex.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
               return a === b || a.includes(b) || b.includes(a);
             })}
+          onSwap={(newExLib) => onSwapExercise && onSwapExercise(ex, newExLib)}
+          allExercises={allExercises}
         />
       ))}
 
@@ -1708,6 +1804,24 @@ export default function TrainingPage() {
   };
 
   // Log in-workout niggle to AIQuestions for trainer review
+  const handleSwapExercise = (oldEx, newExLib) => {
+    const newEx = {
+      ...oldEx,
+      name: newExLib.Name,
+      originalName: oldEx.name,
+      swappedManually: true,
+      muscleGroup: newExLib.PrimaryMuscle || oldEx.muscleGroup,
+    };
+    setActiveExercises(prev => prev.map(e => e.name === oldEx.name ? newEx : e));
+    setActiveSets(prev => {
+      const existing = prev[oldEx.name] || [];
+      const updated = { ...prev };
+      delete updated[oldEx.name];
+      updated[newEx.name] = existing;
+      return updated;
+    });
+  };
+
   const handleNiggleLog = async (bodyPart, severity, flaggedExercises) => {
     try {
       await appendToSheet('AIQuestions', {
@@ -1720,6 +1834,16 @@ export default function TrainingPage() {
         AskedAt:   new Date().toISOString(),
         AnsweredAt:'',
       });
+      // Swap exercises for the reported niggle
+      if (allExercises.length > 0) {
+        const swapped = swapInjuredExercises(activeExercises, bodyPart, allExercises);
+        setActiveExercises(swapped);
+        const newSets = {};
+        swapped.forEach(ex => {
+          newSets[ex.name] = activeSets[ex.name] || Array.from({length: ex.sets||3}, () => ({reps: String(ex.reps||''), weight: '', done: false}));
+        });
+        setActiveSets(newSets);
+      }
     } catch {}
   };
 
@@ -1915,6 +2039,7 @@ export default function TrainingPage() {
         onComplete={handleCompleteWorkout}
         onCancel={()=>setView('weekly')}
         onNiggleLog={handleNiggleLog}
+        onSwapExercise={handleSwapExercise}
         saving={saving}
         allExercises={allExercises}
       />

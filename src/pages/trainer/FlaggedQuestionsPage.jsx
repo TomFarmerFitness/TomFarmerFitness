@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
-import { readSheet } from '../../utils/sheets';
+import { readSheet, upsertRow } from '../../utils/sheets';
 
 function parseDate(str) {
   if (!str) return null;
@@ -13,6 +13,8 @@ export default function FlaggedQuestionsPage() {
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState(null);
   const [clients,   setClients]   = useState([]);
+  const [replies,   setReplies]   = useState({});
+  const [sending,   setSending]   = useState({});
 
   useEffect(() => {
     Promise.all([readSheet('AIQuestions'), readSheet('Clients')])
@@ -23,6 +25,27 @@ export default function FlaggedQuestionsPage() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  async function sendReply(q, i) {
+    const replyText = (replies[i] || '').trim();
+    if (!replyText) return;
+    setSending(prev => ({ ...prev, [i]: true }));
+    try {
+      await upsertRow('AIQuestions', 'QuestionID', q.QuestionID, {
+        Answer: replyText,
+        Status: 'Answered',
+        AnsweredAt: new Date().toISOString(),
+      });
+      setQuestions(prev => prev.map((item, idx) =>
+        idx === i ? { ...item, Answer: replyText, Status: 'Answered', AnsweredAt: new Date().toISOString() } : item
+      ));
+      setReplies(prev => { const n = { ...prev }; delete n[i]; return n; });
+    } catch (e) {
+      alert('Failed to send reply: ' + e.message);
+    } finally {
+      setSending(prev => { const n = { ...prev }; delete n[i]; return n; });
+    }
+  }
 
   function clientName(clientId) {
     const c = clients.find(c => c.ClientID === clientId);
@@ -56,7 +79,10 @@ export default function FlaggedQuestionsPage() {
               <div key={i} style={{ background: '#1e293b', borderRadius: '12px', padding: '18px 20px', border: '1px solid rgba(249,115,22,0.15)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px' }}>🚩</span>
+                    <span style={{ fontSize: '14px' }}>
+                      {q.Question && q.Question.startsWith('[INJURY FLAG]') ? '⚠️' :
+                       q.Question && q.Question.startsWith('[IN-WORKOUT NIGGLE]') ? '🤕' : '🚩'}
+                    </span>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: '#e2e8f0' }}>{clientName(q.ClientID)}</span>
                   </div>
                   <span style={{ fontSize: '11px', color: '#475569' }}>{asked ? format(asked, 'MMM d, yyyy h:mm a') : ''}</span>
@@ -71,8 +97,32 @@ export default function FlaggedQuestionsPage() {
                   </div>
                 ) : (
                   <div style={{ paddingLeft: '22px' }}>
-                    <div style={{ fontSize: '11px', color: '#f97316', fontWeight: '600' }}>AWAITING YOUR RESPONSE</div>
-                    <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>Reply functionality coming soon.</div>
+                    <div style={{ fontSize: '11px', color: '#f97316', fontWeight: '600', marginBottom: '8px' }}>AWAITING YOUR RESPONSE</div>
+                    <textarea
+                      rows={3}
+                      placeholder="Type your reply..."
+                      value={replies[i] || ''}
+                      onChange={e => setReplies(prev => ({ ...prev, [i]: e.target.value }))}
+                      style={{
+                        width: '100%', padding: '10px 12px',
+                        background: '#0f172a', border: '1px solid rgba(249,115,22,0.25)',
+                        borderRadius: '8px', color: '#f8fafc', fontSize: '13px',
+                        resize: 'vertical', outline: 'none', boxSizing: 'border-box',
+                        fontFamily: 'inherit', lineHeight: 1.5,
+                      }}
+                    />
+                    <button
+                      onClick={() => sendReply(q, i)}
+                      disabled={sending[i] || !(replies[i] || '').trim()}
+                      style={{
+                        marginTop: '8px', padding: '8px 16px',
+                        background: sending[i] ? 'rgba(249,115,22,0.4)' : '#f97316',
+                        border: 'none', borderRadius: '8px', color: '#fff',
+                        fontSize: '13px', fontWeight: '700', cursor: sending[i] ? 'not-allowed' : 'pointer',
+                      }}
+                    >
+                      {sending[i] ? 'Sending…' : 'Send Reply'}
+                    </button>
                   </div>
                 )}
               </div>

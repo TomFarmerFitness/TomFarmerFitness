@@ -427,18 +427,22 @@ export default function ClientDetailPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting,      setDeleting]      = useState(false);
   const [assignedProgram, setAssignedProgram] = useState(null);
+  const [checkins,      setCheckins]      = useState([]);
+  const [aiQuestions,   setAiQuestions]   = useState([]);
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows] = await Promise.all([
+        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows, preCheckins, aiQs] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
           readSheet('BodyMetrics').catch(() => []),
           readSheet('ProgressPhotos').catch(() => []),
           readSheet('MacroAdjustments').catch(() => []),
           readSheet('Programs').catch(() => []),
+          readSheet('PreWorkoutCheckins').catch(() => []),
+          readSheet('AIQuestions').catch(() => []),
         ]);
 
         const found = clients.find(c => c.ClientID === clientId);
@@ -450,6 +454,18 @@ export default function ClientDetailPage() {
           ? progRows.find(p => p.ProgramID === found.ProgramID) || null
           : null;
         setAssignedProgram(myProgram);
+
+        setCheckins(
+          (preCheckins || [])
+            .filter(r => r.ClientID === clientId && r.HasInjury === 'Yes')
+            .sort((a, b) => (b.CheckinDate || '').localeCompare(a.CheckinDate || ''))
+        );
+
+        setAiQuestions(
+          (aiQs || [])
+            .filter(r => r.ClientID === clientId && (r.Question || '').startsWith('[IN-WORKOUT NIGGLE]'))
+            .sort((a, b) => (b.AskedAt || '').localeCompare(a.AskedAt || ''))
+        );
 
         setLogs(workoutLogs.filter(l => l.ClientID === clientId).sort((a, b) => {
           const da = parseDate(a.Date), db = parseDate(b.Date);
@@ -793,9 +809,9 @@ export default function ClientDetailPage() {
                     <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 12px', borderRadius: '8px', background: 'rgba(255,255,255,0.03)' }}>
                       <div style={{ width: '8px', height: '8px', borderRadius: '50%', flexShrink: 0, background: log.Status === 'Completed' ? '#22c55e' : '#ef4444' }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '13px', color: '#e2e8f0' }}>Day {log.DayID || '?'} {log.ProgramID ? `· ${log.ProgramID}` : ''}</div>
+                        <div style={{ fontSize: '13px', color: '#e2e8f0' }}>{log.WorkoutName || 'Workout'}</div>
                         <div style={{ fontSize: '11.5px', color: '#64748b' }}>
-                          {log.ExercisesCompleted && log.TotalExercises ? `${log.ExercisesCompleted}/${log.TotalExercises} exercises` : log.Status}
+                          {log.TotalSets ? `${log.TotalSets} sets` : log.Status || 'Completed'}
                           {log.Duration ? ` · ${log.Duration} min` : ''}
                         </div>
                       </div>
@@ -807,6 +823,57 @@ export default function ClientDetailPage() {
             )}
           </div>
         </>
+      )}
+
+      {/* ══════════════════ HEALTH FLAGS ══════════════════ */}
+      {activeSection === 'overview' && (
+        <div style={{ ...cardStyle, marginBottom: 24 }}>
+          <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 14px',
+            display: 'flex', alignItems: 'center', gap: '8px' }}>
+            🏥 Health Flags
+          </h3>
+          {checkins.length === 0 && aiQuestions.length === 0 ? (
+            <div style={{ color: '#475569', fontSize: '13px', textAlign: 'center', padding: '16px 0' }}>
+              No health flags reported.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {[
+                ...checkins.slice(0, 5).map(c => ({
+                  type: 'injury',
+                  date: c.CheckinDate,
+                  text: c.InjuryNotes || 'Injury reported',
+                  extra: c.EnergyLevel ? `Energy: ${c.EnergyLevel}/10` : '',
+                })),
+                ...aiQuestions.slice(0, 5).map(q => ({
+                  type: 'niggle',
+                  date: (q.AskedAt || '').slice(0, 10),
+                  text: (q.Question || '').replace('[IN-WORKOUT NIGGLE]', '').trim(),
+                  extra: '',
+                })),
+              ]
+              .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+              .slice(0, 5)
+              .map((flag, i) => (
+                <div key={i} style={{
+                  padding: '10px 12px', borderRadius: '10px',
+                  background: flag.type === 'injury' ? 'rgba(251,146,60,0.08)' : 'rgba(234,179,8,0.08)',
+                  border: `1px solid ${flag.type === 'injury' ? 'rgba(251,146,60,0.25)' : 'rgba(234,179,8,0.25)'}`,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <span style={{ fontSize: '12px', fontWeight: '700',
+                      color: flag.type === 'injury' ? '#fb923c' : '#eab308' }}>
+                      {flag.type === 'injury' ? '⚠️ Pre-workout Injury Flag' : '🤕 In-workout Niggle'}
+                    </span>
+                    <span style={{ fontSize: '11px', color: '#475569' }}>{flag.date}</span>
+                  </div>
+                  <div style={{ fontSize: '13px', color: '#cbd5e1' }}>{flag.text}</div>
+                  {flag.extra && <div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>{flag.extra}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* ══════════════════ MACRO ADJUSTMENT HISTORY ══════════════════ */}
