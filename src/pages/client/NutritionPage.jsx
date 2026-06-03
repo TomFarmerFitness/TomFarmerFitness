@@ -400,20 +400,21 @@ function BarcodeScanner({ onResult, onClose }) {
   }
 
   useEffect(() => {
-    if (!('BarcodeDetector' in window)) {
-      setNoNativeScanner(true);
-      return;
-    }
-
     let active    = true;
     let detector  = null;
     let intervalId = null;
 
     async function start() {
       try {
-        detector = new window.BarcodeDetector({
-          formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'],
-        });
+        if (!('BarcodeDetector' in window)) { setNoNativeScanner(true); return; }
+        try {
+          detector = new window.BarcodeDetector({
+            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'],
+          });
+        } catch {
+          setNoNativeScanner(true);
+          return;
+        }
 
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
@@ -450,6 +451,9 @@ function BarcodeScanner({ onResult, onClose }) {
         } else if (err.name === 'NotFoundError') {
           setStatus('error');
           setMessage('No camera found on this device.');
+        } else if (err.name === 'TypeError' || err.message?.includes('BarcodeDetector')) {
+          // BarcodeDetector not supported despite being in window (some Safari versions)
+          setNoNativeScanner(true);
         } else {
           setStatus('error');
           setMessage('Could not start camera: ' + err.message);

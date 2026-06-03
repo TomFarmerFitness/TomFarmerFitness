@@ -110,13 +110,16 @@ export default function ClientLayout() {
         {/* Fixed Header */}
         <header style={{
           position: 'fixed', top: 0, zIndex: 200,
-          left: '50%', transform: 'translateX(-50%)',
-          width: '100%', maxWidth: '430px', height: '56px',
+          left: 0, right: 0,
+          width: '100%',
           background: 'rgba(15,23,42,0.96)',
           backdropFilter: 'blur(16px)', WebkitBackdropFilter: 'blur(16px)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
           display: 'flex', alignItems: 'center',
-          justifyContent: 'space-between', padding: '0 16px',
+          justifyContent: 'space-between',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
+          paddingLeft: '16px', paddingRight: '16px', paddingBottom: '0',
+          minHeight: 'calc(56px + env(safe-area-inset-top, 0px))',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
             <div style={{
@@ -160,9 +163,9 @@ export default function ClientLayout() {
         {/* Scrollable Content */}
         <div style={{
           position: 'fixed', zIndex: 1,
-          top: '56px', bottom: '0px',
-          left: '50%', transform: 'translateX(-50%)',
-          width: '100%', maxWidth: '430px',
+          top: 'calc(56px + env(safe-area-inset-top, 0px))', bottom: '0px',
+          left: 0, right: 0,
+          width: '100%',
           overflowY: 'auto', overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
