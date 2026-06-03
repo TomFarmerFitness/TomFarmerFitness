@@ -372,102 +372,113 @@ async function fetchBarcodeProduct(barcode) {
 }
 
 function BarcodeScanner({ onResult, onClose }) {
-  const scannerRef = useRef(null);
-  const [status,  setStatus]  = useState('starting'); // starting|scanning|found|error
-  const [message, setMessage] = useState('Starting camera…');
-  const [manualVal, setManualVal] = useState('');
-  const [looking, setLooking] = useState(false);
-  const [notFound, setNotFound] = useState(false);
-  const activeRef = useRef(true);
+  const videoRef   = useRef(null);
+  const streamRef  = useRef(null);
+  const canvasRef  = useRef(null);
+  const intervalRef = useRef(null);
+  const activeRef  = useRef(true);
 
-  async function lookupBarcode(barcode) {
-    if (!barcode) return;
-    setLooking(true);
-    setNotFound(false);
+  const [phase,    setPhase]    = useState('starting'); // starting|live|capturing|found|error|manual
+  const [message,  setMessage]  = useState('Starting camera…');
+  const [manualVal, setManualVal] = useState('');
+  const [looking,  setLooking]  = useState(false);
+  const [notFound, setNotFound] = useState(false);
+
+  async function lookupBarcode(code) {
+    if (!code) return;
+    setLooking(true); setNotFound(false);
     try {
-      const food = await fetchBarcodeProduct(String(barcode).trim());
+      const food = await fetchBarcodeProduct(String(code).trim());
       if (!activeRef.current) return;
       if (!food) { setNotFound(true); setLooking(false); return; }
       onResult(food);
+    } catch { if (activeRef.current) { setNotFound(true); setLooking(false); } }
+  }
+
+  // Capture one frame from video and attempt BarcodeDetector on it
+  async function captureAndDetect() {
+    const video  = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    setPhase('capturing');
+    setMessage('Scanning…');
+    canvas.width  = video.videoWidth  || 640;
+    canvas.height = video.videoHeight || 480;
+    canvas.getContext('2d').drawImage(video, 0, 0);
+    try {
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+      const bmp  = await createImageBitmap(blob);
+      const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+      const results = await detector.detect(bmp);
+      if (results.length > 0) {
+        setPhase('found');
+        setMessage('Barcode detected!');
+        await lookupBarcode(results[0].rawValue);
+      } else {
+        setPhase('live');
+        setMessage('No barcode found — try again or enter manually');
+      }
     } catch {
-      if (activeRef.current) setNotFound(true);
-    } finally {
-      if (activeRef.current) setLooking(false);
+      setPhase('live');
+      setMessage('Could not read barcode — try again or enter manually');
     }
   }
 
   useEffect(() => {
     activeRef.current = true;
-    let Quagga;
 
-    async function startQuagga() {
+    async function startCamera() {
       try {
-        // Load Quagga2 from CDN if not already loaded
-        if (!window.Quagga) {
-          await new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/lib/quagga.min.js';
-            s.onload = resolve;
-            s.onerror = () => reject(new Error('Failed to load scanner library'));
-            document.head.appendChild(s);
-          });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
+        if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
         }
-        Quagga = window.Quagga;
 
-        await new Promise((resolve, reject) => {
-          Quagga.init({
-            inputStream: {
-              type: 'LiveStream',
-              target: scannerRef.current,
-              constraints: {
-                facingMode: 'environment',
-                width:  { ideal: 640 },
-                height: { ideal: 480 },
-              },
-              area: { top: '20%', right: '10%', bottom: '20%', left: '10%' },
-            },
-            decoder: {
-              readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader'],
-            },
-            locate: true,
-          }, (err) => {
-            if (err) { reject(err); return; }
-            resolve();
-          });
-        });
-
-        if (!activeRef.current) { Quagga.stop(); return; }
-        Quagga.start();
-        setStatus('scanning');
-        setMessage('Align the barcode in the frame');
-
-        Quagga.onDetected(async (result) => {
-          const code = result?.codeResult?.code;
-          if (!code || !activeRef.current) return;
-          Quagga.stop();
-          activeRef.current = false;
-          setStatus('found');
-          setMessage('Barcode detected!');
-          await lookupBarcode(code);
-        });
-
+        // If BarcodeDetector available, auto-scan every 600ms
+        if ('BarcodeDetector' in window) {
+          const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+          setPhase('live');
+          setMessage('Align barcode in frame — or tap Scan');
+          intervalRef.current = setInterval(async () => {
+            if (!activeRef.current || !videoRef.current || phase === 'found') return;
+            try {
+              const results = await detector.detect(videoRef.current);
+              if (results.length > 0) {
+                clearInterval(intervalRef.current);
+                setPhase('found');
+                setMessage('Barcode detected!');
+                await lookupBarcode(results[0].rawValue);
+              }
+            } catch {}
+          }, 600);
+        } else {
+          // No BarcodeDetector — show live view + manual capture button
+          setPhase('live');
+          setMessage('Point camera at barcode, then tap Scan');
+        }
       } catch (err) {
         if (!activeRef.current) return;
-        if (err?.name === 'NotAllowedError') {
-          setStatus('error');
-          setMessage('Camera access denied. Allow camera access in Settings.');
+        if (err.name === 'NotAllowedError') {
+          setPhase('manual');
+          setMessage('Camera access denied — use manual entry below');
         } else {
-          setStatus('error');
-          setMessage('Could not start camera. Use manual entry below.');
+          setPhase('manual');
+          setMessage('Camera unavailable — use manual entry below');
         }
       }
     }
 
-    startQuagga();
+    startCamera();
 
     return () => {
       activeRef.current = false;
-      if (Quagga) { try { Quagga.stop(); } catch {} }
+      clearInterval(intervalRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
     };
   }, []);
 
@@ -476,109 +487,100 @@ function BarcodeScanner({ onResult, onClose }) {
   return (
     <>
       <style>{`
-        @keyframes scanPulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
         @keyframes scanLine {
-          0%   { top: 8%; }
-          50%  { top: 88%; }
-          100% { top: 8%; }
+          0%,100% { top: 10%; } 50% { top: 85%; }
         }
-        #quagga-scanner video,
-        #quagga-scanner canvas {
-          position: absolute !important;
-          top: 0 !important; left: 0 !important;
-          width: 100% !important; height: 100% !important;
-          object-fit: cover !important;
-        }
-        #quagga-scanner canvas.drawingBuffer { display: none; }
       `}</style>
 
-      {/* Dark overlay behind modal */}
-      <div onClick={onClose} style={{
-        position: 'fixed', inset: 0, zIndex: 400,
-        background: 'rgba(0,0,0,0.75)',
-      }} />
+      {/* Backdrop */}
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(0,0,0,0.75)' }} />
 
-      {/* Centered modal */}
+      {/* Modal */}
       <div style={{
         position: 'fixed', zIndex: 401,
-        top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: scanSize + 48,
-        background: '#111827',
-        borderRadius: 20,
-        padding: '20px 24px 24px',
+        top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+        width: Math.min(window.innerWidth - 32, scanSize + 48),
+        background: '#111827', borderRadius: 20,
+        padding: '18px 20px 22px',
         boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
+        maxHeight: '90dvh', overflowY: 'auto',
       }}>
-
-        {/* Header row */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 }}>
-          <span style={{ color: '#f8fafc', fontSize: 16, fontWeight: 700 }}>
-            {status === 'found' ? '✓ Barcode found' : '📷 Scan Barcode'}
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 14 }}>
+          <span style={{ color: '#f8fafc', fontSize: 15, fontWeight: 700 }}>
+            {phase === 'found' ? '✓ Barcode found' : '📷 Scan Barcode'}
           </span>
           <button onClick={onClose} style={{
-            width: 32, height: 32, borderRadius: '50%',
+            width: 30, height: 30, borderRadius: '50%',
             background: 'rgba(255,255,255,0.1)', border: 'none',
-            color: '#f8fafc', fontSize: 18, cursor: 'pointer',
+            color: '#f8fafc', fontSize: 16, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
           }}>✕</button>
         </div>
 
-        {/* Camera viewfinder */}
-        <div style={{
-          position: 'relative',
-          width: scanSize, height: scanSize,
-          borderRadius: 14, overflow: 'hidden',
-          background: '#000',
-          border: `2px solid ${status === 'error' ? 'rgba(239,68,68,0.5)' : status === 'found' ? '#22c55e' : 'rgba(249,115,22,0.5)'}`,
-        }}>
-          <div id="quagga-scanner" ref={scannerRef} style={{ position: 'absolute', inset: 0 }} />
+        {/* Camera viewfinder — hidden in manual-only mode */}
+        {phase !== 'manual' && (
+          <div style={{
+            position: 'relative', width: scanSize, height: scanSize,
+            borderRadius: 14, overflow: 'hidden', background: '#000',
+            border: `2px solid ${phase === 'found' ? '#22c55e' : 'rgba(249,115,22,0.5)'}`,
+            flexShrink: 0,
+          }}>
+            <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <canvas ref={canvasRef} style={{ display: 'none' }} />
 
-          {/* Corner brackets */}
-          {[['top','left'],['top','right'],['bottom','left'],['bottom','right']].map(([v,h]) => (
-            <div key={v+h} style={{
-              position: 'absolute', [v]: 8, [h]: 8,
-              width: 20, height: 20, pointerEvents: 'none',
-              borderTop:    v==='top'    ? '3px solid #f97316' : 'none',
-              borderBottom: v==='bottom' ? '3px solid #f97316' : 'none',
-              borderLeft:   h==='left'   ? '3px solid #f97316' : 'none',
-              borderRight:  h==='right'  ? '3px solid #f97316' : 'none',
-              borderRadius: v==='top'&&h==='left' ? '3px 0 0 0' : v==='top'&&h==='right' ? '0 3px 0 0' : v==='bottom'&&h==='left' ? '0 0 0 3px' : '0 0 3px 0',
-            }} />
-          ))}
+            {/* Corner brackets */}
+            {[['top','left'],['top','right'],['bottom','left'],['bottom','right']].map(([v,h]) => (
+              <div key={v+h} style={{
+                position: 'absolute', [v]: 8, [h]: 8,
+                width: 18, height: 18, pointerEvents: 'none',
+                borderTop:    v==='top'    ? '3px solid #f97316' : 'none',
+                borderBottom: v==='bottom' ? '3px solid #f97316' : 'none',
+                borderLeft:   h==='left'   ? '3px solid #f97316' : 'none',
+                borderRight:  h==='right'  ? '3px solid #f97316' : 'none',
+              }} />
+            ))}
 
-          {/* Scan line animation */}
-          {status === 'scanning' && (
-            <div style={{
-              position: 'absolute', left: '5%', right: '5%', height: 2,
-              background: 'linear-gradient(90deg, transparent, #f97316, transparent)',
-              animation: 'scanLine 2s ease-in-out infinite',
-            }} />
-          )}
+            {/* Scan line */}
+            {phase === 'live' && (
+              <div style={{
+                position: 'absolute', left: '5%', right: '5%', height: 2,
+                background: 'linear-gradient(90deg,transparent,#f97316,transparent)',
+                animation: 'scanLine 2s ease-in-out infinite',
+              }} />
+            )}
 
-          {/* Status overlay */}
-          {status === 'starting' && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}>
-              <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#f97316', animation: 'spin 0.8s linear infinite' }} />
-            </div>
-          )}
-        </div>
+            {/* Starting spinner */}
+            {phase === 'starting' && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}>
+                <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#f97316', animation: 'spin 0.8s linear infinite' }} />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Scan button — shown when camera is live but no auto-detect */}
+        {phase === 'live' && (
+          <button onClick={captureAndDetect} style={{
+            marginTop: 12, padding: '11px 28px',
+            background: '#f97316', border: 'none', borderRadius: 10,
+            color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
+            width: '100%',
+          }}>📸 Scan Barcode</button>
+        )}
 
         {/* Status message */}
         <div style={{
-          marginTop: 12, fontSize: 13,
-          color: status === 'error' ? '#fca5a5' : '#94a3b8',
+          marginTop: 10, fontSize: 12,
+          color: phase === 'manual' ? '#fbbf24' : '#94a3b8',
           textAlign: 'center',
         }}>{message}</div>
 
         {/* Divider */}
-        <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,0.07)', margin: '16px 0 12px' }} />
+        <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,0.07)', margin: '14px 0 10px' }} />
 
-        {/* Manual entry always visible */}
+        {/* Manual entry */}
         <div style={{ width: '100%' }}>
           <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Or enter barcode manually</div>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -593,7 +595,7 @@ function BarcodeScanner({ onResult, onClose }) {
             <button
               onClick={() => manualVal && lookupBarcode(manualVal)}
               disabled={looking || !manualVal}
-              style={{ padding: '10px 14px', background: looking || !manualVal ? 'rgba(249,115,22,0.4)' : '#f97316', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: looking || !manualVal ? 'not-allowed' : 'pointer', fontSize: 14 }}
+              style={{ padding: '10px 14px', background: looking || !manualVal ? 'rgba(249,115,22,0.4)' : '#f97316', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: 'pointer', fontSize: 14 }}
             >{looking ? '…' : 'Go'}</button>
           </div>
           {notFound && <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5' }}>Product not found. Check the number and try again.</div>}
@@ -770,8 +772,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
             padding: '0 0 calc(16px + env(safe-area-inset-bottom))',
             maxHeight: '88vh',
             display: 'flex', flexDirection: 'column',
-            overflowY: 'auto',
-            WebkitOverflowScrolling: 'touch',
+            overflow: 'hidden',
           }}
         >
           {/* Handle bar */}
@@ -801,7 +802,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
             >×</button>
           </div>
 
-          <div style={{ padding: '8px 16px 16px', flex: 1 }}>
+          <div style={{ padding: '8px 16px 16px', flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
 
             {/* ── Meal type selector (always visible) ── */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
