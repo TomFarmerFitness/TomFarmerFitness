@@ -402,8 +402,17 @@ function BarcodeScanner({ onResult, onClose }) {
 
     async function startQuagga() {
       try {
-        const mod = await import('@ericblade/quagga2');
-        Quagga = mod.default || mod;
+        // Load Quagga2 from CDN if not already loaded
+        if (!window.Quagga) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/@ericblade/quagga2@1.12.1/lib/quagga.min.js';
+            s.onload = resolve;
+            s.onerror = () => reject(new Error('Failed to load scanner library'));
+            document.head.appendChild(s);
+          });
+        }
+        Quagga = window.Quagga;
 
         await new Promise((resolve, reject) => {
           Quagga.init({
