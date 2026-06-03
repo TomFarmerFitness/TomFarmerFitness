@@ -372,251 +372,225 @@ async function fetchBarcodeProduct(barcode) {
 }
 
 function BarcodeScanner({ onResult, onClose }) {
-  const videoRef  = useRef(null);
-  const streamRef = useRef(null);
-  const [status,  setStatus]  = useState('starting'); // 'starting'|'scanning'|'found'|'error'
+  const scannerRef = useRef(null);
+  const [status,  setStatus]  = useState('starting'); // starting|scanning|found|error
   const [message, setMessage] = useState('Starting camera…');
-  const [noNativeScanner, setNoNativeScanner] = useState(false);
-  const [manualLookupStatus, setManualLookupStatus] = useState(null); // null|'loading'|'error'
+  const [manualVal, setManualVal] = useState('');
+  const [looking, setLooking] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  const activeRef = useRef(true);
 
   async function lookupBarcode(barcode) {
-    setStatus('found');
-    setMessage('Looking up product…');
-    setManualLookupStatus('loading');
+    if (!barcode) return;
+    setLooking(true);
+    setNotFound(false);
     try {
-      const food = await fetchBarcodeProduct(barcode);
-      if (!food) {
-        setStatus('error');
-        setMessage('Product not found. Try another barcode or use manual entry.');
-        setManualLookupStatus('error');
-        return;
-      }
+      const food = await fetchBarcodeProduct(String(barcode).trim());
+      if (!activeRef.current) return;
+      if (!food) { setNotFound(true); setLooking(false); return; }
       onResult(food);
     } catch {
-      setStatus('error');
-      setMessage('Failed to fetch product data. Check your connection.');
-      setManualLookupStatus('error');
+      if (activeRef.current) setNotFound(true);
+    } finally {
+      if (activeRef.current) setLooking(false);
     }
   }
 
   useEffect(() => {
-    let active    = true;
-    let detector  = null;
-    let intervalId = null;
+    activeRef.current = true;
+    let Quagga;
 
-    async function start() {
+    async function startQuagga() {
       try {
-        if (!('BarcodeDetector' in window)) { setNoNativeScanner(true); return; }
-        try {
-          detector = new window.BarcodeDetector({
-            formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'],
-          });
-        } catch {
-          setNoNativeScanner(true);
-          return;
-        }
+        const mod = await import('@ericblade/quagga2');
+        Quagga = mod.default || mod;
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        await new Promise((resolve, reject) => {
+          Quagga.init({
+            inputStream: {
+              type: 'LiveStream',
+              target: scannerRef.current,
+              constraints: {
+                facingMode: 'environment',
+                width:  { ideal: 640 },
+                height: { ideal: 480 },
+              },
+              area: { top: '20%', right: '10%', bottom: '20%', left: '10%' },
+            },
+            decoder: {
+              readers: ['ean_reader', 'ean_8_reader', 'upc_reader', 'upc_e_reader', 'code_128_reader'],
+            },
+            locate: true,
+          }, (err) => {
+            if (err) { reject(err); return; }
+            resolve();
+          });
         });
 
-        if (!active) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-
+        if (!activeRef.current) { Quagga.stop(); return; }
+        Quagga.start();
         setStatus('scanning');
-        setMessage('Align barcode in the frame');
+        setMessage('Align the barcode in the frame');
 
-        intervalId = setInterval(async () => {
-          if (!active || !videoRef.current) return;
-          try {
-            const barcodes = await detector.detect(videoRef.current);
-            if (barcodes.length > 0) {
-              clearInterval(intervalId);
-              const barcode = barcodes[0].rawValue;
-              await lookupBarcode(barcode);
-            }
-          } catch { /* detection error — continue scanning */ }
-        }, 400);
+        Quagga.onDetected(async (result) => {
+          const code = result?.codeResult?.code;
+          if (!code || !activeRef.current) return;
+          Quagga.stop();
+          activeRef.current = false;
+          setStatus('found');
+          setMessage('Barcode detected!');
+          await lookupBarcode(code);
+        });
 
       } catch (err) {
-        if (!active) return;
-        if (err.name === 'NotAllowedError') {
+        if (!activeRef.current) return;
+        if (err?.name === 'NotAllowedError') {
           setStatus('error');
-          setMessage('Camera access denied. Please allow camera access in your browser settings.');
-        } else if (err.name === 'NotFoundError') {
-          setStatus('error');
-          setMessage('No camera found on this device.');
-        } else if (err.name === 'TypeError' || err.message?.includes('BarcodeDetector')) {
-          // BarcodeDetector not supported despite being in window (some Safari versions)
-          setNoNativeScanner(true);
+          setMessage('Camera access denied. Allow camera access in Settings.');
         } else {
           setStatus('error');
-          setMessage('Could not start camera: ' + err.message);
+          setMessage('Could not start camera. Use manual entry below.');
         }
       }
     }
 
-    start();
+    startQuagga();
 
     return () => {
-      active = false;
-      clearInterval(intervalId);
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-      }
+      activeRef.current = false;
+      if (Quagga) { try { Quagga.stop(); } catch {} }
     };
   }, []);
 
-  const isScanning = status === 'scanning';
-
-  // iOS Safari / no BarcodeDetector fallback
-  if (noNativeScanner) {
-    return (
-      <div style={{
-        position: 'fixed', inset: 0, zIndex: 300,
-        background: '#070c14',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        padding: '24px',
-      }}>
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute', top: 20, right: 20,
-            width: 44, height: 44, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.15)', border: 'none',
-            color: '#fff', fontSize: 22, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >✕</button>
-        <div style={{ color: '#f8fafc', fontSize: 16, fontWeight: 600, marginBottom: 16, textAlign: 'center' }}>
-          Scan Barcode
-        </div>
-        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', margin: '0 0 16px' }}>
-          Barcode scanning isn&apos;t supported in this browser. Enter the barcode number manually:
-        </p>
-        <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '360px' }}>
-          <input
-            type="number"
-            inputMode="numeric"
-            placeholder="e.g. 9300650521097"
-            style={{ flex: 1, padding: '12px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#f8fafc', fontSize: '15px' }}
-            onKeyDown={e => { if (e.key === 'Enter') lookupBarcode(e.target.value); }}
-            id="manual-barcode-input"
-          />
-          <button
-            onClick={() => { const v = document.getElementById('manual-barcode-input').value; if (v) lookupBarcode(v); }}
-            style={{ padding: '12px 16px', background: '#f97316', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}
-          >Go</button>
-        </div>
-        {manualLookupStatus === 'loading' && (
-          <div style={{ marginTop: 16, color: '#94a3b8', fontSize: 13 }}>Looking up product…</div>
-        )}
-        {manualLookupStatus === 'error' && (
-          <div style={{ marginTop: 16, color: '#fca5a5', fontSize: 13 }}>Product not found. Check the barcode and try again.</div>
-        )}
-      </div>
-    );
-  }
+  const scanSize = Math.min(window.innerWidth - 64, 280);
 
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 300,
-      background: '#000',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center',
-    }}>
-      {/* Close */}
-      <button
-        onClick={onClose}
-        style={{
-          position: 'absolute', top: 20, right: 20,
-          width: 44, height: 44, borderRadius: '50%',
-          background: 'rgba(255,255,255,0.15)', border: 'none',
-          color: '#fff', fontSize: 22, cursor: 'pointer',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >✕</button>
-
-      <div style={{ color: '#fff', fontSize: 16, fontWeight: 600, marginBottom: 20, textAlign: 'center', padding: '0 24px' }}>
-        {status === 'found' ? '✓ Barcode found' : 'Scan Barcode'}
-      </div>
-
-      {/* Viewfinder */}
-      <div style={{
-        position: 'relative',
-        width: Math.min(window.innerWidth - 48, 300),
-        height: Math.min(window.innerWidth - 48, 300),
-        borderRadius: 20, overflow: 'hidden',
-        border: `2px solid ${status === 'error' ? '#ef4444' : status === 'found' ? '#22c55e' : '#22c55e'}`,
-        background: '#111',
-      }}>
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-        />
-        {/* Corner guides */}
-        {['top-left','top-right','bottom-left','bottom-right'].map(corner => {
-          const [v, h] = corner.split('-');
-          return (
-            <div key={corner} style={{
-              position: 'absolute',
-              [v]: -2, [h]: -2,
-              width: 24, height: 24,
-              borderTop:    v === 'top'    ? '4px solid #22c55e' : 'none',
-              borderBottom: v === 'bottom' ? '4px solid #22c55e' : 'none',
-              borderLeft:   h === 'left'   ? '4px solid #22c55e' : 'none',
-              borderRight:  h === 'right'  ? '4px solid #22c55e' : 'none',
-              borderRadius: corner === 'top-left' ? '4px 0 0 0' : corner === 'top-right' ? '0 4px 0 0' : corner === 'bottom-left' ? '0 0 0 4px' : '0 0 4px 0',
-            }} />
-          );
-        })}
-        {/* Scanning animation */}
-        {isScanning && (
-          <div style={{
-            position: 'absolute', left: 0, right: 0, height: 2,
-            background: 'linear-gradient(90deg, transparent, #22c55e, transparent)',
-            animation: 'scanLine 2s ease-in-out infinite',
-          }} />
-        )}
-      </div>
-
-      <div style={{
-        marginTop: 20, fontSize: 14,
-        color: status === 'error' ? '#fca5a5' : '#94a3b8',
-        textAlign: 'center', maxWidth: 280, padding: '0 16px',
-      }}>
-        {message}
-      </div>
-
-      {status === 'error' && (
-        <button
-          onClick={onClose}
-          style={{
-            marginTop: 20, padding: '12px 24px',
-            background: '#22c55e', border: 'none', borderRadius: 10,
-            color: '#000', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-          }}
-        >
-          Use Manual Entry
-        </button>
-      )}
-
+    <>
       <style>{`
-        @keyframes scanLine {
-          0%   { top: 10%; }
-          50%  { top: 85%; }
-          100% { top: 10%; }
+        @keyframes scanPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
         }
+        @keyframes scanLine {
+          0%   { top: 8%; }
+          50%  { top: 88%; }
+          100% { top: 8%; }
+        }
+        #quagga-scanner video,
+        #quagga-scanner canvas {
+          position: absolute !important;
+          top: 0 !important; left: 0 !important;
+          width: 100% !important; height: 100% !important;
+          object-fit: cover !important;
+        }
+        #quagga-scanner canvas.drawingBuffer { display: none; }
       `}</style>
-    </div>
+
+      {/* Dark overlay behind modal */}
+      <div onClick={onClose} style={{
+        position: 'fixed', inset: 0, zIndex: 400,
+        background: 'rgba(0,0,0,0.75)',
+      }} />
+
+      {/* Centered modal */}
+      <div style={{
+        position: 'fixed', zIndex: 401,
+        top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: scanSize + 48,
+        background: '#111827',
+        borderRadius: 20,
+        padding: '20px 24px 24px',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.6)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+      }}>
+
+        {/* Header row */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginBottom: 16 }}>
+          <span style={{ color: '#f8fafc', fontSize: 16, fontWeight: 700 }}>
+            {status === 'found' ? '✓ Barcode found' : '📷 Scan Barcode'}
+          </span>
+          <button onClick={onClose} style={{
+            width: 32, height: 32, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.1)', border: 'none',
+            color: '#f8fafc', fontSize: 18, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>✕</button>
+        </div>
+
+        {/* Camera viewfinder */}
+        <div style={{
+          position: 'relative',
+          width: scanSize, height: scanSize,
+          borderRadius: 14, overflow: 'hidden',
+          background: '#000',
+          border: `2px solid ${status === 'error' ? 'rgba(239,68,68,0.5)' : status === 'found' ? '#22c55e' : 'rgba(249,115,22,0.5)'}`,
+        }}>
+          <div id="quagga-scanner" ref={scannerRef} style={{ position: 'absolute', inset: 0 }} />
+
+          {/* Corner brackets */}
+          {[['top','left'],['top','right'],['bottom','left'],['bottom','right']].map(([v,h]) => (
+            <div key={v+h} style={{
+              position: 'absolute', [v]: 8, [h]: 8,
+              width: 20, height: 20, pointerEvents: 'none',
+              borderTop:    v==='top'    ? '3px solid #f97316' : 'none',
+              borderBottom: v==='bottom' ? '3px solid #f97316' : 'none',
+              borderLeft:   h==='left'   ? '3px solid #f97316' : 'none',
+              borderRight:  h==='right'  ? '3px solid #f97316' : 'none',
+              borderRadius: v==='top'&&h==='left' ? '3px 0 0 0' : v==='top'&&h==='right' ? '0 3px 0 0' : v==='bottom'&&h==='left' ? '0 0 0 3px' : '0 0 3px 0',
+            }} />
+          ))}
+
+          {/* Scan line animation */}
+          {status === 'scanning' && (
+            <div style={{
+              position: 'absolute', left: '5%', right: '5%', height: 2,
+              background: 'linear-gradient(90deg, transparent, #f97316, transparent)',
+              animation: 'scanLine 2s ease-in-out infinite',
+            }} />
+          )}
+
+          {/* Status overlay */}
+          {status === 'starting' && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)' }}>
+              <div style={{ width: 32, height: 32, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.2)', borderTopColor: '#f97316', animation: 'spin 0.8s linear infinite' }} />
+            </div>
+          )}
+        </div>
+
+        {/* Status message */}
+        <div style={{
+          marginTop: 12, fontSize: 13,
+          color: status === 'error' ? '#fca5a5' : '#94a3b8',
+          textAlign: 'center',
+        }}>{message}</div>
+
+        {/* Divider */}
+        <div style={{ width: '100%', height: 1, background: 'rgba(255,255,255,0.07)', margin: '16px 0 12px' }} />
+
+        {/* Manual entry always visible */}
+        <div style={{ width: '100%' }}>
+          <div style={{ fontSize: 11, color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>Or enter barcode manually</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="number" inputMode="numeric"
+              placeholder="e.g. 9300650521097"
+              value={manualVal}
+              onChange={e => { setManualVal(e.target.value); setNotFound(false); }}
+              onKeyDown={e => { if (e.key === 'Enter' && manualVal) lookupBarcode(manualVal); }}
+              style={{ flex: 1, padding: '10px 12px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#f8fafc', fontSize: 14 }}
+            />
+            <button
+              onClick={() => manualVal && lookupBarcode(manualVal)}
+              disabled={looking || !manualVal}
+              style={{ padding: '10px 14px', background: looking || !manualVal ? 'rgba(249,115,22,0.4)' : '#f97316', border: 'none', borderRadius: 8, color: '#fff', fontWeight: 700, cursor: looking || !manualVal ? 'not-allowed' : 'pointer', fontSize: 14 }}
+            >{looking ? '…' : 'Go'}</button>
+          </div>
+          {notFound && <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5' }}>Product not found. Check the number and try again.</div>}
+        </div>
+      </div>
+    </>
   );
 }
 
