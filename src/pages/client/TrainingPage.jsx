@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { readSheet, appendToSheet } from '../../utils/sheets';
+import { readSheet, appendToSheet, upsertRow } from '../../utils/sheets';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const SORE_MUSCLES = ['Chest','Back','Shoulders','Arms','Legs','Glutes','Core','None'];
@@ -151,28 +151,165 @@ function computeWeekStats(workoutLogs, weekDays) {
 }
 
 function computeProgression(exercises, completedSets) {
+  // Progressive overload: weight only increases when ALL sets hit the TOP of the rep range
   const updates = [];
   exercises.forEach(ex => {
     const exSets = completedSets[ex.name] || [];
     if (exSets.length === 0) return;
-    if (!exSets.every(s => s.done)) return;
-    const targetReps = parseInt(String(ex.reps || '0').split('-')[0]) || 0;
-    if (targetReps === 0) return;
-    if (!exSets.every(s => (parseInt(s.reps) || 0) >= targetReps)) return;
+    if (!exSets.every(s => s.done)) return; // all sets must be completed
+
+    // Parse rep range e.g. "8-10" → min=8, max=10; "10" → min=10, max=10
+    const repStr = String(ex.reps || '0');
+    const parts = repStr.split('-').map(s => parseInt(s.trim()) || 0);
+    const maxReps = parts.length > 1 ? parts[1] : parts[0];
+    if (maxReps === 0) return;
+
+    // All sets must hit MAX of the rep range for progression to trigger
+    const allHitMax = exSets.every(s => (parseInt(s.reps) || 0) >= maxReps);
+    if (!allHitMax) return;
+
     const currentWeight = parseFloat(ex.weight) || 0;
+    // Use per-exercise increment if set, else fall back to compound/isolation default
     const isCompound = /bench|squat|deadlift|row|press|pull|dip|lunge/i.test(ex.name);
+    const inc = parseFloat(ex.weightIncrement) || (isCompound ? 2.5 : 1.25);
+
     if (currentWeight > 0) {
-      const inc = isCompound ? 2.5 : 1.25;
-      updates.push({ exerciseName: ex.name, muscleGroup: ex.muscleGroup||'',
-        type:'weight', currentWeight, newWeight: Math.round((currentWeight+inc)*100)/100,
+      updates.push({ exerciseName: ex.name, muscleGroup: ex.muscleGroup || '',
+        type: 'weight', currentWeight, newWeight: Math.round((currentWeight + inc) * 100) / 100,
         increment: inc, currentReps: ex.reps });
     } else {
-      const cr = parseInt(String(ex.reps||'0').split('-')[0]) || 0;
-      if (cr > 0) updates.push({ exerciseName: ex.name, muscleGroup: ex.muscleGroup||'',
-        type:'reps', currentReps: cr, newReps: cr + 1 });
+      const minReps = parts[0];
+      if (minReps > 0) updates.push({ exerciseName: ex.name, muscleGroup: ex.muscleGroup || '',
+        type: 'reps', currentReps: minReps, newReps: minReps + 1 });
     }
   });
   return updates;
+}
+
+// ─── ProgramRoadmap ───────────────────────────────────────────────────────────
+function ProgramRoadmap({ phases, workoutLogs, programId, currentPhaseIdx, currentWeek }) {
+  if (!phases || phases.length === 0) return null;
+
+  // Compute which weeks are completed based on workout logs
+  const completedWeeks = new Set();
+  (workoutLogs || []).forEach(log => {
+    if (log.ProgramID === programId && log.Status === 'Completed' && log.WeekNumber) {
+      completedWeeks.add(`${log.PhaseIndex || 0}-${log.WeekNumber}`);
+    }
+  });
+
+  const [expanded, setExpanded] = useState(null); // phase id
+
+  return (
+    <div style={{ margin: '12px 0 8px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '0.02em' }}>
+          📋 Program Roadmap
+        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+          {phases.reduce((s, p) => s + (p.weekCount || 4), 0)} weeks total
+        </span>
+      </div>
+
+      {phases.map((phase, phaseIdx) => {
+        const isCurrentPhase = phaseIdx === (currentPhaseIdx ?? 0);
+        const isExpanded = expanded === phase.id || isCurrentPhase;
+        const weeksDone = Array.from({ length: phase.weekCount || 4 }, (_, wi) =>
+          completedWeeks.has(`${phaseIdx}-${wi + 1}`)
+        ).filter(Boolean).length;
+        const phaseDone = weeksDone >= (phase.weekCount || 4);
+
+        return (
+          <div key={phase.id} style={{
+            background: isCurrentPhase ? 'rgba(249,115,22,0.06)' : 'var(--surface-secondary, rgba(255,255,255,0.03))',
+            border: isCurrentPhase ? '1px solid rgba(249,115,22,0.3)' : '1px solid var(--border, rgba(255,255,255,0.08))',
+            borderRadius: 12, overflow: 'hidden',
+          }}>
+            {/* Phase header */}
+            <button onClick={() => setExpanded(isExpanded ? null : phase.id)}
+              style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+                padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                background: phaseDone ? 'rgba(34,197,94,0.2)' : isCurrentPhase ? 'rgba(249,115,22,0.2)' : 'rgba(255,255,255,0.06)',
+                border: `1px solid ${phaseDone ? '#22c55e' : isCurrentPhase ? '#f97316' : 'rgba(255,255,255,0.1)'}`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700,
+                color: phaseDone ? '#22c55e' : isCurrentPhase ? '#f97316' : 'var(--text-tertiary)' }}>
+                {phaseDone ? '✓' : phaseIdx + 1}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 600,
+                  color: phaseDone ? '#22c55e' : isCurrentPhase ? '#f97316' : 'var(--text-primary)' }}>
+                  {phase.name || `Phase ${phaseIdx + 1}`}
+                  {isCurrentPhase && !phaseDone && (
+                    <span style={{ marginLeft: 6, fontSize: 10, background: 'rgba(249,115,22,0.2)',
+                      color: '#f97316', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>
+                      CURRENT
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 1 }}>
+                  {phase.weekCount || 4} weeks · {weeksDone}/{phase.weekCount || 4} done
+                </div>
+              </div>
+              {/* Mini week dots */}
+              <div style={{ display: 'flex', gap: 3, flexShrink: 0 }}>
+                {Array.from({ length: phase.weekCount || 4 }, (_, wi) => {
+                  const weekNum = wi + 1;
+                  const done = completedWeeks.has(`${phaseIdx}-${weekNum}`);
+                  const isCurrent = isCurrentPhase && weekNum === (currentWeek ?? 1);
+                  return (
+                    <div key={wi} style={{ width: 8, height: 8, borderRadius: '50%',
+                      background: done ? '#22c55e' : isCurrent ? '#f97316' : 'rgba(255,255,255,0.15)',
+                      border: isCurrent && !done ? '1px solid #f97316' : 'none',
+                      flexShrink: 0 }} />
+                  );
+                })}
+              </div>
+              <span style={{ color: 'var(--text-tertiary)', fontSize: 12, flexShrink: 0 }}>
+                {isExpanded ? '▲' : '▼'}
+              </span>
+            </button>
+
+            {/* Expanded week list */}
+            {isExpanded && (
+              <div style={{ padding: '0 14px 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {Array.from({ length: phase.weekCount || 4 }, (_, wi) => {
+                  const weekNum = wi + 1;
+                  const done = completedWeeks.has(`${phaseIdx}-${weekNum}`);
+                  const isCurrent = isCurrentPhase && weekNum === (currentWeek ?? 1);
+                  const isFuture = phaseIdx > (currentPhaseIdx ?? 0) ||
+                    (isCurrentPhase && weekNum > (currentWeek ?? 1));
+
+                  return (
+                    <div key={wi} style={{ display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '6px 10px', borderRadius: 8,
+                      background: isCurrent ? 'rgba(249,115,22,0.1)' : 'transparent',
+                      border: isCurrent ? '1px solid rgba(249,115,22,0.2)' : '1px solid transparent' }}>
+                      <div style={{ width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                        background: done ? '#22c55e' : isCurrent ? '#f97316' : 'rgba(255,255,255,0.06)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 10, fontWeight: 700,
+                        color: done || isCurrent ? '#fff' : 'var(--text-tertiary)' }}>
+                        {done ? '✓' : weekNum}
+                      </div>
+                      <span style={{ fontSize: 13,
+                        color: done ? '#22c55e' : isCurrent ? 'var(--text-primary)' : isFuture ? 'var(--text-tertiary)' : 'var(--text-secondary)',
+                        fontWeight: isCurrent ? 600 : 400 }}>
+                        Week {weekNum}
+                        {isCurrent && <span style={{ marginLeft: 6, fontSize: 11, color: '#f97316' }}>← You are here</span>}
+                        {done && <span style={{ marginLeft: 6, fontSize: 11, color: '#22c55e' }}>Completed</span>}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 // ─── Reusable UI helpers ──────────────────────────────────────────────────────
@@ -1659,6 +1796,9 @@ export default function TrainingPage() {
   const [workoutLogs,  setWorkoutLogs]  = useState([]);
   const [clientProfile,setClientProfile]= useState(null);
   const [activeProgram,setActiveProgram]= useState(null);
+  const [activePhases, setActivePhases]  = useState(null); // parsed PhasesJSON
+  const [currentPhaseIdx, setCurrentPhaseIdx] = useState(0);
+  const [currentWeek, setCurrentWeek]    = useState(1);
   const [trainingDays, setTrainingDays]  = useState(null);
   const [loading,      setLoading]      = useState(true);
   const [saving,       setSaving]       = useState(false);
@@ -1700,25 +1840,48 @@ export default function TrainingPage() {
         ? progRows.find(p => p.ProgramID === profile.ProgramID) || null
         : null;
       setActiveProgram(myProgram);
+
+      // Parse phases and current week/phase tracking
+      let parsedPhases = null;
+      if (myProgram?.PhasesJSON) {
+        try { parsedPhases = JSON.parse(myProgram.PhasesJSON); } catch {}
+      }
+      // Fall back to wrapping DaysJSON in single phase
+      if (!parsedPhases && myProgram?.DaysJSON) {
+        try {
+          const days = JSON.parse(myProgram.DaysJSON);
+          parsedPhases = [{ id: myProgram.ProgramID + '_p1', name: 'Program', order: 1,
+            weekCount: +myProgram.DurationWeeks || 8, days }];
+        } catch {}
+      }
+      setActivePhases(parsedPhases);
+
+      // Current phase/week from client profile fields
+      const phaseIdx = parseInt(profile?.CurrentPhaseIdx) || 0;
+      const weekNum  = parseInt(profile?.CurrentWeek) || 1;
+      setCurrentPhaseIdx(phaseIdx);
+      setCurrentWeek(weekNum);
+
       const assignedDays = profile?.TrainingDays
         ? new Set(profile.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean))
         : null;
       setTrainingDays(assignedDays);
 
-      // Transform DaysJSON into session-like objects WorkoutDayCard expects
+      // Build sessions from current phase days (or DaysJSON fallback)
       let mySessions = [];
-      if (myProgram?.DaysJSON) {
-        try {
-          const days = JSON.parse(myProgram.DaysJSON);
-          mySessions = days.map(day => ({
-            SessionID:   `${myProgram.ProgramID}_day${day.dayOrder}`,
-            ProgramID:   myProgram.ProgramID,
-            DayOrder:    String(day.dayOrder),
-            SessionName: day.dayName || `Day ${day.dayOrder}`,
-            FocusArea:   day.focusArea || '',
-            Exercises:   JSON.stringify(day.exercises || []),
-          }));
-        } catch { /* malformed DaysJSON — leave empty */ }
+      const currentPhaseDays = parsedPhases?.[phaseIdx]?.days;
+      const daysSource = currentPhaseDays || (myProgram?.DaysJSON ? (() => { try { return JSON.parse(myProgram.DaysJSON); } catch { return []; } })() : []);
+      if (daysSource.length > 0 && myProgram) {
+        mySessions = daysSource.map(day => ({
+          SessionID:   `${myProgram.ProgramID}_p${phaseIdx}_day${day.dayOrder}`,
+          ProgramID:   myProgram.ProgramID,
+          DayOrder:    String(day.dayOrder),
+          SessionName: day.dayName || `Day ${day.dayOrder}`,
+          FocusArea:   day.focusArea || '',
+          Exercises:   JSON.stringify(day.exercises || []),
+          PhaseIdx:    phaseIdx,
+          WeekNum:     weekNum,
+        }));
       }
       setSessions(mySessions);
       setWorkoutLogs(logs.filter(l => l.ClientID === user.clientID));
@@ -1925,7 +2088,9 @@ export default function TrainingPage() {
       await appendToSheet('WorkoutLogs', {
         LogID: logID, ClientID: user.clientID,
         Date: actualDate,
-        ProgramID: clientProfile?.ProgramID || '',
+        ProgramID:   clientProfile?.ProgramID || '',
+        PhaseIndex:  String(currentPhaseIdx ?? 0),
+        WeekNumber:  String(currentWeek ?? 1),
         WorkoutName: activeSession?.SessionName || 'Workout',
         ExercisesCompleted: JSON.stringify(exSummary),
         TotalSets: String(totalSetsDone),
@@ -1981,6 +2146,26 @@ export default function TrainingPage() {
   const handleConfirmProgression = async () => {
     setSavingProgression(true);
     try {
+      // Advance week/phase tracking after completing a workout
+      if (activePhases && clientProfile?.ClientID) {
+        try {
+          const phase = activePhases[currentPhaseIdx];
+          const phaseWeeks = phase?.weekCount || 8;
+          let newWeek = currentWeek + 1;
+          let newPhaseIdx = currentPhaseIdx;
+          if (newWeek > phaseWeeks) {
+            newWeek = 1;
+            newPhaseIdx = Math.min(currentPhaseIdx + 1, activePhases.length - 1);
+          }
+          await upsertRow('Clients', 'ClientID', clientProfile.ClientID, {
+              CurrentWeek: String(newWeek),
+              CurrentPhaseIdx: String(newPhaseIdx),
+            });
+          setCurrentWeek(newWeek);
+          setCurrentPhaseIdx(newPhaseIdx);
+        } catch (e) { console.warn('Could not advance week:', e); }
+      }
+
       if (activeProgram?.ProgramID && progressionItems.length > 0) {
         await callProxy({
           action: 'applyProgression',
@@ -2103,6 +2288,17 @@ export default function TrainingPage() {
         }}>
           <strong>Set up workout sessions</strong> — Ask your trainer to add sessions to your program in the <em>WorkoutSessions</em> sheet. Until then, you can still log workouts using the Start Workout button.
         </div>
+      )}
+
+      {/* Program Roadmap */}
+      {!loading && activePhases && activePhases.length > 0 && (
+        <ProgramRoadmap
+          phases={activePhases}
+          workoutLogs={workoutLogs}
+          programId={activeProgram?.ProgramID}
+          currentPhaseIdx={currentPhaseIdx}
+          currentWeek={currentWeek}
+        />
       )}
 
       {/* Weekly stats */}

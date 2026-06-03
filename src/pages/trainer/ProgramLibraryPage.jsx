@@ -61,6 +61,27 @@ function initDays(count, existing = []) {
   });
 }
 
+function initPhase(order, daysPerWeek, existing = null) {
+  return existing || {
+    id:        generateId('phase'),
+    name:      `Phase ${order}`,
+    order,
+    weekCount: 4,
+    days:      initDays(daysPerWeek),
+  };
+}
+
+function initPhases(count, daysPerWeek, existing = []) {
+  return Array.from({ length: count }, (_, i) =>
+    initPhase(i + 1, daysPerWeek, existing[i] || null)
+  );
+}
+
+// Compute total weeks from phases array
+function totalProgramWeeks(phases) {
+  return (phases || []).reduce((s, p) => s + (p.weekCount || 4), 0);
+}
+
 // ─── Apps Script helpers (write ops not in sheets.js) ─────────────────────────
 
 async function callProxy(body) {
@@ -697,36 +718,144 @@ function StepDetails({ data, onChange }) {
   );
 }
 
-// ─── CreateProgramModal — Step 2: Build Days ─────────────────────────────────
-function StepBuildDays({ days, daysPerWeek, onDaysChange }) {
-  const [editingIdx, setEditingIdx] = useState(null);
+// ─── CreateProgramModal — Step 2: Define Phases ──────────────────────────────
+function StepDefinePhases({ phases, daysPerWeek, onPhasesChange }) {
+  const inputStyle = {
+    background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+    borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'8px 10px', width:'100%', boxSizing:'border-box',
+  };
+
+  const addPhase = () => {
+    onPhasesChange([...phases, initPhase(phases.length + 1, daysPerWeek)]);
+  };
+
+  const removePhase = (i) => {
+    if (phases.length <= 1) return;
+    onPhasesChange(phases.filter((_, idx) => idx !== i).map((p, idx) => ({ ...p, order: idx + 1 })));
+  };
+
+  const updatePhase = (i, field, val) => {
+    const next = [...phases];
+    next[i] = { ...next[i], [field]: val };
+    onPhasesChange(next);
+  };
+
+  const totalWeeks = totalProgramWeeks(phases);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'14px' }}>
+      <div style={{ color:'#94a3b8', fontSize:'13px' }}>
+        Break your program into phases (e.g. Foundation → Build → Peak). Each phase repeats the same day structure for its week count, with weights auto-progressing each week.
+      </div>
+
+      {phases.map((phase, i) => (
+        <div key={phase.id} style={{ background:'rgba(255,255,255,0.04)',
+          border:'1px solid rgba(249,115,22,0.2)', borderRadius:'12px', padding:'14px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
+            <div style={{ width:'28px', height:'28px', borderRadius:'50%',
+              background:'rgba(249,115,22,0.2)', border:'1px solid rgba(249,115,22,0.4)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+              color:'#f97316', fontSize:'12px', fontWeight:700, flexShrink:0 }}>
+              {i + 1}
+            </div>
+            <input
+              value={phase.name}
+              onChange={e => updatePhase(i, 'name', e.target.value)}
+              placeholder={`Phase ${i + 1} name (e.g. Foundation, Build, Peak)`}
+              style={{ ...inputStyle }} />
+            {phases.length > 1 && (
+              <button onClick={() => removePhase(i)}
+                style={{ background:'none', border:'none', color:'#64748b', fontSize:'18px',
+                  cursor:'pointer', padding:'0 4px', flexShrink:0 }}>✕</button>
+            )}
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
+            <span style={{ color:'#64748b', fontSize:'13px', flexShrink:0 }}>Duration:</span>
+            <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+              {[2,3,4,6,8,12].map(w => (
+                <button key={w} onClick={() => updatePhase(i, 'weekCount', w)}
+                  style={{ padding:'5px 12px', borderRadius:'20px', border:'none',
+                    fontSize:'12px', cursor:'pointer', fontWeight: phase.weekCount === w ? 600 : 400,
+                    background: phase.weekCount === w ? '#f97316' : 'rgba(255,255,255,0.08)',
+                    color: phase.weekCount === w ? '#fff' : '#94a3b8', transition:'all 0.15s' }}>
+                  {w}w
+                </button>
+              ))}
+            </div>
+            <span style={{ color:'#475569', fontSize:'12px' }}>({phase.weekCount} weeks)</span>
+          </div>
+        </div>
+      ))}
+
+      <button onClick={addPhase}
+        style={{ padding:'11px', background:'rgba(249,115,22,0.08)',
+          border:'1px dashed rgba(249,115,22,0.3)', borderRadius:'10px',
+          color:'#f97316', fontSize:'14px', cursor:'pointer', fontWeight:500 }}>
+        + Add Phase
+      </button>
+
+      <div style={{ background:'rgba(255,255,255,0.03)', borderRadius:'10px', padding:'12px',
+        display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ color:'#64748b', fontSize:'13px' }}>{phases.length} phase{phases.length !== 1 ? 's' : ''} · {daysPerWeek} days/week</span>
+        <span style={{ color:'#f97316', fontSize:'13px', fontWeight:600 }}>{totalWeeks} weeks total</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── CreateProgramModal — Step 3: Build Day Templates per Phase ───────────────
+function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
+  const [activePhase, setActivePhase] = useState(0);
   const inputStyle = {
     background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
     borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'8px 10px',
   };
 
-  // Ensure days array is synced with daysPerWeek
+  // Sync days count when daysPerWeek changes
   useEffect(() => {
-    if (days.length !== daysPerWeek) {
-      onDaysChange(initDays(daysPerWeek, days));
-    }
+    const updated = phases.map(phase => ({
+      ...phase,
+      days: phase.days.length !== daysPerWeek ? initDays(daysPerWeek, phase.days) : phase.days,
+    }));
+    onPhasesChange(updated);
   }, [daysPerWeek]);
 
-  const updateDay = (i, field, val) => {
-    const next = [...days];
-    next[i] = { ...next[i], [field]: val };
-    onDaysChange(next);
+  const updateDay = (phaseIdx, dayIdx, field, val) => {
+    const next = phases.map((p, pi) => pi !== phaseIdx ? p : {
+      ...p,
+      days: p.days.map((d, di) => di !== dayIdx ? d : { ...d, [field]: val }),
+    });
+    onPhasesChange(next);
   };
 
+  const phase = phases[activePhase] || phases[0];
+  const days = phase?.days || [];
+
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
-      <div style={{ color:'#94a3b8', fontSize:'13px', marginBottom:'4px' }}>
-        Name each training day and pick a muscle focus. You'll add exercises in the next step.
+    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+      <div style={{ color:'#94a3b8', fontSize:'13px' }}>
+        Name each training day for each phase. You can use different day splits per phase.
       </div>
+
+      {/* Phase tabs */}
+      {phases.length > 1 && (
+        <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+          {phases.map((p, i) => (
+            <button key={p.id} onClick={() => setActivePhase(i)}
+              style={{ padding:'6px 14px', borderRadius:'8px', border:'none', cursor:'pointer',
+                fontSize:'13px', fontWeight: activePhase === i ? 600 : 400,
+                background: activePhase === i ? '#f97316' : 'rgba(255,255,255,0.08)',
+                color: activePhase === i ? '#fff' : '#94a3b8', transition:'all 0.15s' }}>
+              {p.name || `Phase ${i+1}`}
+            </button>
+          ))}
+        </div>
+      )}
+
       {days.map((day, i) => (
         <div key={day.id} style={{ background:'rgba(255,255,255,0.04)',
           border:'1px solid rgba(255,255,255,0.08)', borderRadius:'10px', padding:'14px' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px', marginBottom:'10px' }}>
+          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
             <div style={{ width:'28px', height:'28px', borderRadius:'50%',
               background:'rgba(249,115,22,0.15)', border:'1px solid rgba(249,115,22,0.3)',
               display:'flex', alignItems:'center', justifyContent:'center',
@@ -735,7 +864,7 @@ function StepBuildDays({ days, daysPerWeek, onDaysChange }) {
             </div>
             <input
               value={day.dayName}
-              onChange={e => updateDay(i, 'dayName', e.target.value)}
+              onChange={e => updateDay(activePhase, i, 'dayName', e.target.value)}
               placeholder={`Day ${i + 1} name (e.g. Push, Legs, Upper)`}
               style={{ ...inputStyle, flex:1 }} />
           </div>
@@ -799,6 +928,12 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
             <input value={ex.rest || '60s'} onChange={e => onUpdate(index, 'rest', e.target.value)}
               style={inputMini} placeholder="60s" />
           </div>
+          <div>
+            <span style={labelMini}>+kg/wk</span>
+            <input type="number" min={0} max={20} step={0.5} value={ex.weightIncrement ?? 2.5}
+              onChange={e => onUpdate(index, 'weightIncrement', parseFloat(e.target.value) || 2.5)}
+              style={{ ...inputMini, width:'48px' }} />
+          </div>
         </div>
         {/* actions */}
         <div style={{ display:'flex', gap:'4px', flexShrink:0 }}>
@@ -852,13 +987,16 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
   );
 }
 
-// ─── CreateProgramModal — Step 3: Exercise Builder ───────────────────────────
-function StepExercises({ days, onDaysChange, allExercises }) {
+// ─── CreateProgramModal — Step 4: Exercise Builder (phase-aware) ─────────────
+function StepExercises({ phases, onPhasesChange, allExercises }) {
+  const [activePhase, setActivePhase] = useState(0);
   const [activeDay, setActiveDay] = useState(0);
   const [search, setSearch] = useState('');
   const [muscleFilter, setMuscleFilter] = useState('All');
 
-  const day = days[activeDay] || { exercises: [] };
+  const phase = phases[activePhase] || phases[0];
+  const days  = phase?.days || [];
+  const day   = days[activeDay] || { exercises: [] };
   const exercises = day.exercises || [];
 
   const filtered = allExercises.filter(e => {
@@ -867,15 +1005,19 @@ function StepExercises({ days, onDaysChange, allExercises }) {
     return matchSearch && matchMuscle;
   });
 
+  const updatePhasesDays = (newDays) => {
+    onPhasesChange(phases.map((p, pi) => pi !== activePhase ? p : { ...p, days: newDays }));
+  };
+
   const addExercise = (ex) => {
     const newEx = {
       id: generateId('exrow'), exerciseId: ex.ExerciseID,
       name: ex.Name, muscleGroup: ex.PrimaryMuscle || '',
-      sets: 3, reps: '10', rest: '60s', notes: '',
+      sets: 3, reps: '8-10', rest: '60s', weightIncrement: 2.5, notes: '',
     };
     const next = [...days];
     next[activeDay] = { ...day, exercises: [...exercises, newEx] };
-    onDaysChange(next);
+    updatePhasesDays(next);
   };
 
   const moveExercise = (from, to) => {
@@ -885,7 +1027,7 @@ function StepExercises({ days, onDaysChange, allExercises }) {
     exArr.splice(to, 0, item);
     const next = [...days];
     next[activeDay] = { ...day, exercises: exArr };
-    onDaysChange(next);
+    updatePhasesDays(next);
   };
 
   const updateExercise = (i, field, val) => {
@@ -893,14 +1035,14 @@ function StepExercises({ days, onDaysChange, allExercises }) {
     exArr[i] = { ...exArr[i], [field]: val };
     const next = [...days];
     next[activeDay] = { ...day, exercises: exArr };
-    onDaysChange(next);
+    updatePhasesDays(next);
   };
 
   const removeExercise = (i) => {
     const exArr = exercises.filter((_, idx) => idx !== i);
     const next = [...days];
     next[activeDay] = { ...day, exercises: exArr };
-    onDaysChange(next);
+    updatePhasesDays(next);
   };
 
   const uniqueMuscles = ['All', ...new Set(allExercises.map(e => e.PrimaryMuscle).filter(Boolean))];
@@ -943,6 +1085,20 @@ function StepExercises({ days, onDaysChange, allExercises }) {
 
       {/* Right: day builder */}
       <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px', minWidth:0 }}>
+        {/* Phase tabs (only if multiple phases) */}
+        {phases.length > 1 && (
+          <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0, paddingBottom:'2px' }}>
+            {phases.map((p, i) => (
+              <button key={p.id} onClick={() => { setActivePhase(i); setActiveDay(0); }}
+                style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                  whiteSpace:'nowrap', fontSize:'11px', fontWeight: activePhase===i ? 600 : 400,
+                  background: activePhase===i ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.06)',
+                  color: activePhase===i ? '#f97316' : '#64748b', transition:'all 0.15s', flexShrink:0 }}>
+                {p.name || `Phase ${i+1}`}
+              </button>
+            ))}
+          </div>
+        )}
         {/* day tabs */}
         <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0,
           paddingBottom:'4px' }}>
@@ -980,30 +1136,47 @@ function StepExercises({ days, onDaysChange, allExercises }) {
 }
 
 // ─── CreateProgramModal ───────────────────────────────────────────────────────
-const STEP_LABELS = ['Details', 'Training Days', 'Exercises'];
+const STEP_LABELS = ['Details', 'Phases', 'Day Names', 'Exercises'];
 
 const defaultProgramData = () => ({
   name: '', description: '', goal: 'Muscle Gain', daysPerWeek: 4,
-  durationWeeks: 8, level: 'Intermediate', equipment: [], focusAreas: [],
+  level: 'Intermediate', equipment: [], focusAreas: [],
   sessionDuration: 60, trainingType: 'Hypertrophy',
 });
 
+function parsePhasesFromProgram(prog) {
+  if (prog?.phasesJSON || prog?.PhasesJSON) {
+    try { return JSON.parse(prog.PhasesJSON || prog.phasesJSON); } catch {}
+  }
+  // Backward compat: wrap DaysJSON in a single phase
+  const days = prog?.days || [];
+  return [{ id: generateId('phase'), name: 'Phase 1', order: 1, weekCount: prog?.durationWeeks || 4, days }];
+}
+
 function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
   const isEdit = !!initial;
-  const [step, setStep]     = useState(0);
-  const [data, setData]     = useState(initial ? {
+  const [step, setStep]       = useState(0);
+  const [data, setData]       = useState(initial ? {
     name: initial.name, description: initial.description || '',
     goal: initial.goal, daysPerWeek: initial.daysPerWeek,
-    durationWeeks: initial.durationWeeks || 8, level: initial.level || 'Intermediate',
+    level: initial.level || 'Intermediate',
     equipment: initial.equipment || [], focusAreas: initial.focusAreas || [],
     sessionDuration: initial.sessionDuration || 60,
     trainingType: initial.trainingType || 'Hypertrophy',
   } : defaultProgramData());
-  const [days, setDays]     = useState(initial?.days || initDays(data.daysPerWeek));
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
+  const [phases, setPhases]   = useState(() =>
+    initial ? parsePhasesFromProgram(initial) : initPhases(1, 4)
+  );
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
 
-  const updateData = (field, val) => setData(d => ({ ...d, [field]: val }));
+  const updateData = (field, val) => {
+    setData(d => ({ ...d, [field]: val }));
+    // When daysPerWeek changes, sync phases
+    if (field === 'daysPerWeek') {
+      setPhases(ps => ps.map(p => ({ ...p, days: initDays(val, p.days) })));
+    }
+  };
 
   const canNext = () => {
     if (step === 0) return data.name.trim().length > 0;
@@ -1013,7 +1186,10 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
-      await onSave({ ...data, days, id: initial?.id });
+      const durationWeeks = totalProgramWeeks(phases);
+      // DaysJSON = first phase days (backward compat for TrainingPage until it reads PhasesJSON)
+      const days = phases[0]?.days || [];
+      await onSave({ ...data, days, phases, durationWeeks, id: initial?.id });
       onClose();
     } catch(e) { setError(e.message); setSaving(false); }
   };
@@ -1022,7 +1198,7 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:1000,
       display:'flex', alignItems:'center', justifyContent:'center', padding:'12px' }}>
       <div style={{ background:'#1e293b', borderRadius:'16px', width:'100%',
-        maxWidth: step === 2 ? '680px' : '520px',
+        maxWidth: step === 3 ? '720px' : '520px',
         maxHeight:'92vh', display:'flex', flexDirection:'column', overflow:'hidden',
         transition:'max-width 0.3s' }}>
 
@@ -1056,11 +1232,13 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
         </div>
 
         {/* Body */}
-        <div style={{ overflowY: step === 2 ? 'hidden' : 'auto', flex:1, padding:'20px' }}>
+        <div style={{ overflowY: step === 3 ? 'hidden' : 'auto', flex:1, padding:'20px' }}>
           {step === 0 && <StepDetails data={data} onChange={updateData} />}
-          {step === 1 && <StepBuildDays days={days} daysPerWeek={data.daysPerWeek}
-            onDaysChange={setDays} />}
-          {step === 2 && <StepExercises days={days} onDaysChange={setDays}
+          {step === 1 && <StepDefinePhases phases={phases} daysPerWeek={data.daysPerWeek}
+            onPhasesChange={setPhases} />}
+          {step === 2 && <StepBuildDays phases={phases} daysPerWeek={data.daysPerWeek}
+            onPhasesChange={setPhases} />}
+          {step === 3 && <StepExercises phases={phases} onPhasesChange={setPhases}
             allExercises={allExercises} />}
           {error && (
             <div style={{ marginTop:'12px', background:'rgba(239,68,68,0.1)',
@@ -1146,17 +1324,21 @@ export default function ProgramLibraryPage() {
         readSheet('Exercises').catch(() => []),
       ]);
 
-      // Parse days JSON for each program
+      // Parse days/phases JSON for each program
       const parsed = rawProgs.map(p => {
         let days = [];
+        let phases = null;
         try { days = p.DaysJSON ? JSON.parse(p.DaysJSON) : []; } catch {}
+        try { phases = p.PhasesJSON ? JSON.parse(p.PhasesJSON) : null; } catch {}
         return {
           id: p.ProgramID, name: p.Name, description: p.Description || '',
           goal: p.Goal || 'General Fitness', daysPerWeek: +p.DaysPerWeek || 3,
           durationWeeks: +p.DurationWeeks || 8, level: p.Level || 'Intermediate',
           equipment: p.Equipment ? p.Equipment.split(',').map(s=>s.trim()) : [],
           focusAreas: p.FocusAreas ? p.FocusAreas.split(',').map(s=>s.trim()) : [],
-          days, createdAt: p.CreatedAt || '',
+          days, phases, createdAt: p.CreatedAt || '',
+          sessionDuration: +p.SessionDuration || 60,
+          trainingType: p.TrainingType || 'Hypertrophy',
         };
       });
       setPrograms(parsed);
@@ -1187,14 +1369,16 @@ export default function ProgramLibraryPage() {
       Goal: goal, DaysPerWeek: daysPerWeek, DurationWeeks: durationWeeks,
       Level: level, Equipment: equipment.join(', '), FocusAreas: focusAreas.join(', '),
       SessionDuration: sessionDuration || 60, TrainingType: trainingType || 'Hypertrophy',
-      DaysJSON: JSON.stringify(days), CreatedAt: id ? undefined : todayISO(),
+      DaysJSON: JSON.stringify(days),
+      PhasesJSON: JSON.stringify(phases || [{ id: generateId('phase'), name: 'Phase 1', order: 1, weekCount: durationWeeks, days }]),
+      CreatedAt: id ? undefined : todayISO(),
     };
     if (id) delete rowData.CreatedAt;
     await upsertSheetRow('Programs', 'ProgramID', programId, rowData);
 
     // Optimistic update
     const newProg = { id: programId, name, description, goal, daysPerWeek,
-      durationWeeks, level, equipment, focusAreas, days, sessionDuration, trainingType };
+      durationWeeks, level, equipment, focusAreas, days, phases, sessionDuration, trainingType };
     setPrograms(prev => id
       ? prev.map(p => p.id === id ? newProg : p)
       : [newProg, ...prev]);
@@ -1209,6 +1393,7 @@ export default function ProgramLibraryPage() {
       Goal: copy.goal, DaysPerWeek: copy.daysPerWeek, DurationWeeks: copy.durationWeeks,
       Level: copy.level, Equipment: copy.equipment.join(', '),
       FocusAreas: copy.focusAreas.join(', '), DaysJSON: JSON.stringify(copy.days),
+      PhasesJSON: copy.phases ? JSON.stringify(copy.phases) : undefined,
       CreatedAt: todayISO(),
     };
     await upsertSheetRow('Programs', 'ProgramID', newId, rowData);
@@ -1356,6 +1541,4 @@ export default function ProgramLibraryPage() {
  
           onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
       )}
-    </div>
-  );
-}
+    <

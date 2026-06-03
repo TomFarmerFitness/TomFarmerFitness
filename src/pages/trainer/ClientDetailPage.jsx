@@ -225,6 +225,118 @@ function WeeklyVolumePanel({ program }) {
 
 
 // ─── Lift Progression Panel ────────────────────────────────────────────────────
+
+// ─── ProgramRoadmap (trainer read-only view) ──────────────────────────────────
+function ProgramRoadmap({ program, client, logs }) {
+  const phases = program?.phases;
+  if (!phases || phases.length === 0) return null;
+
+  const [expanded, setExpanded] = useState(null);
+
+  const completedWeeks = new Set();
+  (logs || []).forEach(log => {
+    if (log.ProgramID === program?.ProgramID && log.Status === 'Completed' && log.WeekNumber) {
+      completedWeeks.add(`${log.PhaseIndex || 0}-${log.WeekNumber}`);
+    }
+  });
+
+  const currentPhaseIdx = parseInt(client?.CurrentPhaseIdx) || 0;
+  const currentWeek = parseInt(client?.CurrentWeek) || 1;
+
+  return (
+    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12, padding: '16px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h3 style={{ color: '#e2e8f0', fontSize: 14, fontWeight: 600, margin: 0 }}>
+          📋 Program Roadmap
+        </h3>
+        <span style={{ fontSize: 12, color: '#475569' }}>
+          {phases.reduce((s, p) => s + (p.weekCount || 4), 0)} weeks · {phases.length} phase{phases.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {phases.map((phase, phaseIdx) => {
+          const isCurrentPhase = phaseIdx === currentPhaseIdx;
+          const isExpanded = expanded === phase.id || isCurrentPhase;
+          const weeksDone = Array.from({ length: phase.weekCount || 4 }, (_, wi) =>
+            completedWeeks.has(`${phaseIdx}-${wi + 1}`)
+          ).filter(Boolean).length;
+          const phaseDone = weeksDone >= (phase.weekCount || 4);
+          return (
+            <div key={phase.id} style={{
+              background: isCurrentPhase ? 'rgba(249,115,22,0.05)' : 'rgba(255,255,255,0.02)',
+              border: `1px solid ${isCurrentPhase ? 'rgba(249,115,22,0.25)' : 'rgba(255,255,255,0.06)'}`,
+              borderRadius: 10, overflow: 'hidden',
+            }}>
+              <button onClick={() => setExpanded(isExpanded ? null : phase.id)}
+                style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+                  padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, textAlign: 'left' }}>
+                <div style={{ width: 26, height: 26, borderRadius: '50%', flexShrink: 0,
+                  background: phaseDone ? 'rgba(34,197,94,0.15)' : isCurrentPhase ? 'rgba(249,115,22,0.15)' : 'rgba(255,255,255,0.06)',
+                  border: `1px solid ${phaseDone ? '#22c55e' : isCurrentPhase ? '#f97316' : 'rgba(255,255,255,0.1)'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 11, fontWeight: 700, color: phaseDone ? '#22c55e' : isCurrentPhase ? '#f97316' : '#64748b' }}>
+                  {phaseDone ? '✓' : phaseIdx + 1}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600,
+                    color: phaseDone ? '#22c55e' : isCurrentPhase ? '#f97316' : '#e2e8f0' }}>
+                    {phase.name || `Phase ${phaseIdx + 1}`}
+                    {isCurrentPhase && !phaseDone && (
+                      <span style={{ marginLeft: 6, fontSize: 10, background: 'rgba(249,115,22,0.15)',
+                        color: '#f97316', padding: '1px 6px', borderRadius: 20, fontWeight: 600 }}>CURRENT</span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 11, color: '#475569', marginTop: 1 }}>
+                    {phase.weekCount || 4} weeks · {weeksDone}/{phase.weekCount || 4} completed
+                  </div>
+                </div>
+                <div style={{ display: 'flex', gap: 3 }}>
+                  {Array.from({ length: phase.weekCount || 4 }, (_, wi) => {
+                    const done = completedWeeks.has(`${phaseIdx}-${wi + 1}`);
+                    const isCurrent = isCurrentPhase && (wi + 1) === currentWeek;
+                    return (
+                      <div key={wi} style={{ width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                        background: done ? '#22c55e' : isCurrent ? '#f97316' : 'rgba(255,255,255,0.12)' }} />
+                    );
+                  })}
+                </div>
+                <span style={{ color: '#475569', fontSize: 11 }}>{isExpanded ? '▲' : '▼'}</span>
+              </button>
+              {isExpanded && (
+                <div style={{ padding: '0 14px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  {Array.from({ length: phase.weekCount || 4 }, (_, wi) => {
+                    const weekNum = wi + 1;
+                    const done = completedWeeks.has(`${phaseIdx}-${weekNum}`);
+                    const isCurrent = isCurrentPhase && weekNum === currentWeek;
+                    return (
+                      <div key={wi} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                        padding: '5px 10px', borderRadius: 6,
+                        background: isCurrent ? 'rgba(249,115,22,0.08)' : 'transparent' }}>
+                        <div style={{ width: 18, height: 18, borderRadius: '50%', flexShrink: 0,
+                          background: done ? '#22c55e' : isCurrent ? '#f97316' : 'rgba(255,255,255,0.06)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 9, fontWeight: 700,
+                          color: done || isCurrent ? '#fff' : '#475569' }}>
+                          {done ? '✓' : weekNum}
+                        </div>
+                        <span style={{ fontSize: 12, color: done ? '#22c55e' : isCurrent ? '#e2e8f0' : '#64748b', fontWeight: isCurrent ? 600 : 400 }}>
+                          Week {weekNum}
+                          {isCurrent && <span style={{ marginLeft: 6, fontSize: 10, color: '#f97316' }}>← Client here</span>}
+                          {done && !isCurrent && <span style={{ marginLeft: 6, fontSize: 10, color: '#4ade80' }}>✓</span>}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function LiftProgressionPanel({ logs }) {
   const progressMap = {};
   logs.forEach(log => {
@@ -450,9 +562,15 @@ export default function ClientDetailPage() {
         setClient(found);
 
         // Find assigned program from client's ProgramID field
-        const myProgram = found.ProgramID
+        const myProgRaw = found.ProgramID
           ? progRows.find(p => p.ProgramID === found.ProgramID) || null
           : null;
+        let myProgram = myProgRaw;
+        if (myProgRaw) {
+          let phases = null;
+          try { phases = myProgRaw.PhasesJSON ? JSON.parse(myProgRaw.PhasesJSON) : null; } catch {}
+          myProgram = { ...myProgRaw, phases };
+        }
         setAssignedProgram(myProgram);
 
         setCheckins(
@@ -781,6 +899,11 @@ export default function ClientDetailPage() {
               ))}
             </div>
           </div>
+
+          {/* Program Roadmap */}
+          {assignedProgram?.phases && (
+            <ProgramRoadmap program={assignedProgram} client={client} logs={logs} />
+          )}
 
           {/* Weekly volume */}
           {assignedProgram && <WeeklyVolumePanel program={assignedProgram} />}

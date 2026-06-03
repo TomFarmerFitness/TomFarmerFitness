@@ -2,6 +2,25 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { readSheet, appendToSheet, lookupFood } from '../../utils/sheets';
 import { useAuth } from '../../context/AuthContext';
 
+// ── Recent Foods (localStorage) ──────────────────────────────────────────────
+const RECENT_FOODS_KEY = 'tff_recent_foods';
+const MAX_RECENT = 30;
+
+function saveToRecentFoods(foodData) {
+  try {
+    const stored = JSON.parse(localStorage.getItem(RECENT_FOODS_KEY) || '[]');
+    // Deduplicate by foodName (case-insensitive)
+    const filtered = stored.filter(f => f.foodName.toLowerCase() !== foodData.foodName.toLowerCase());
+    const updated = [{ ...foodData, savedAt: Date.now() }, ...filtered].slice(0, MAX_RECENT);
+    localStorage.setItem(RECENT_FOODS_KEY, JSON.stringify(updated));
+  } catch {}
+}
+
+function getRecentFoods() {
+  try { return JSON.parse(localStorage.getItem(RECENT_FOODS_KEY) || '[]'); } catch { return []; }
+}
+
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function todayISO() {
@@ -372,17 +391,20 @@ async function fetchBarcodeProduct(barcode) {
 }
 
 function BarcodeScanner({ onResult, onClose }) {
-  const videoRef   = useRef(null);
-  const streamRef  = useRef(null);
-  const canvasRef  = useRef(null);
+  const videoRef    = useRef(null);
+  const streamRef   = useRef(null);
+  const canvasRef   = useRef(null);
   const intervalRef = useRef(null);
-  const activeRef  = useRef(true);
+  const activeRef   = useRef(true);
+  const phaseRef    = useRef('starting'); // mirrors phase — readable inside interval without stale closure
 
-  const [phase,    setPhase]    = useState('starting'); // starting|live|capturing|found|error|manual
-  const [message,  setMessage]  = useState('Starting camera…');
+  const [phase,     setPhase]    = useState('starting');
+  const [message,   setMessage]  = useState('Starting camera…');
   const [manualVal, setManualVal] = useState('');
-  const [looking,  setLooking]  = useState(false);
-  const [notFound, setNotFound] = useState(false);
+  const [looking,   setLooking]  = useState(false);
+  const [notFound,  setNotFound] = useState(false);
+
+  function updatePhase(p) { phaseRef.current = p; setPhase(p); }
 
   async function lookupBarcode(code) {
     if (!code) return;
@@ -395,33 +417,23 @@ function BarcodeScanner({ onResult, onClose }) {
     } catch { if (activeRef.current) { setNotFound(true); setLooking(false); } }
   }
 
-  // Capture one frame from video and attempt BarcodeDetector on it
-  async function captureAndDetect() {
+  // Capture a canvas frame and decode — works reliably on iOS Safari
+  async function captureFrame() {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas) return;
-    setPhase('capturing');
-    setMessage('Scanning…');
+    if (!video || !canvas || video.readyState < 2) return null;
     canvas.width  = video.videoWidth  || 640;
     canvas.height = video.videoHeight || 480;
     canvas.getContext('2d').drawImage(video, 0, 0);
     try {
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.95));
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
       const bmp  = await createImageBitmap(blob);
-      const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
+      const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','itf'] });
       const results = await detector.detect(bmp);
-      if (results.length > 0) {
-        setPhase('found');
-        setMessage('Barcode detected!');
-        await lookupBarcode(results[0].rawValue);
-      } else {
-        setPhase('live');
-        setMessage('No barcode found — try again or enter manually');
-      }
-    } catch {
-      setPhase('live');
-      setMessage('Could not read barcode — try again or enter manually');
-    }
+      bmp.close();
+      if (results.length > 0) return results[0].rawValue;
+    } catch {}
+    return null;
   }
 
   useEffect(() => {
@@ -430,7 +442,7 @@ function BarcodeScanner({ onResult, onClose }) {
     async function startCamera() {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
         });
         if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
@@ -439,35 +451,31 @@ function BarcodeScanner({ onResult, onClose }) {
           await videoRef.current.play();
         }
 
-        // If BarcodeDetector available, auto-scan every 600ms
         if ('BarcodeDetector' in window) {
-          const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'] });
-          setPhase('live');
-          setMessage('Align barcode in frame — or tap Scan');
+          updatePhase('live');
+          setMessage('Hold barcode steady in frame…');
+          // Auto-scan using canvas frames every 400ms — avoids stale closure bug, reliable on iOS
           intervalRef.current = setInterval(async () => {
-            if (!activeRef.current || !videoRef.current || phase === 'found') return;
-            try {
-              const results = await detector.detect(videoRef.current);
-              if (results.length > 0) {
-                clearInterval(intervalRef.current);
-                setPhase('found');
-                setMessage('Barcode detected!');
-                await lookupBarcode(results[0].rawValue);
-              }
-            } catch {}
-          }, 600);
+            if (!activeRef.current || phaseRef.current === 'found') return;
+            const code = await captureFrame();
+            if (code) {
+              clearInterval(intervalRef.current);
+              updatePhase('found');
+              setMessage('✓ Barcode detected!');
+              await lookupBarcode(code);
+            }
+          }, 400);
         } else {
-          // No BarcodeDetector — show live view + manual capture button
-          setPhase('live');
+          updatePhase('live');
           setMessage('Point camera at barcode, then tap Scan');
         }
       } catch (err) {
         if (!activeRef.current) return;
         if (err.name === 'NotAllowedError') {
-          setPhase('manual');
+          updatePhase('manual');
           setMessage('Camera access denied — use manual entry below');
         } else {
-          setPhase('manual');
+          updatePhase('manual');
           setMessage('Camera unavailable — use manual entry below');
         }
       }
@@ -677,7 +685,17 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
     setSearching(true);
     setSearchError('');
     try {
-      const res = await lookupFood(query.trim());
+      // Show recent foods when query is short/empty
+    if (query.trim().length < 2) {
+      const recents = getRecentFoods();
+      if (recents.length > 0) {
+        setResults(recents.map(r => ({ ...r, source: 'recent' })));
+        setStep('results');
+      }
+      setSearching(false);
+      return;
+    }
+    const res = await lookupFood(query.trim());
       setResults(res);
       setStep('results');
     } catch (e) {
@@ -913,14 +931,19 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
             ) : step === 'results' ? (
               /* ── RESULTS STEP ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {results.length > 0 && results[0].source === 'recent' && (
+                  <div style={{ fontSize: 12, color: 'var(--text-tertiary)', fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', marginBottom: 2 }}>
+                    🕐 Recently Added
+                  </div>
+                )}
                 {results.length === 0 ? (
                   <div style={{ textAlign: 'center', padding: '24px 0', color: 'var(--text-tertiary)', fontSize: 14 }}>
                     No results found. <button onClick={() => setManualMode(true)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#22c55e', fontSize: 14 }}>Enter manually?</button>
                   </div>
                 ) : results.map((food, i) => (
                   <button key={i} onClick={() => handleSelectFood(food)} style={{
-                    background: 'var(--surface-secondary, #1a1a1a)',
-                    border: '1px solid var(--border, #2a2a2a)',
+                    background: food.source === 'recent' ? 'rgba(34,197,94,0.06)' : 'var(--surface-secondary, #1a1a1a)',
+                    border: food.source === 'recent' ? '1px solid rgba(34,197,94,0.2)' : '1px solid var(--border, #2a2a2a)',
                     borderRadius: 12, padding: '12px 14px',
                     cursor: 'pointer', textAlign: 'left',
                     display: 'flex', justifyContent: 'space-between', alignItems: 'center',
@@ -928,7 +951,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text-primary)', marginBottom: 3 }}>{food.foodName}</div>
                       <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                        per {food.servingSize || 100}g · {Math.round(food.protein)}p · {Math.round(food.carbs)}c · {Math.round(food.fats)}f
+                        per {food.servingSize || food.servingG || 100}g · {Math.round(food.protein)}p · {Math.round(food.carbs)}c · {Math.round(food.fats)}f
                       </div>
                     </div>
                     <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)', marginLeft: 10 }}>
@@ -1280,6 +1303,17 @@ export default function NutritionPage() {
 
     // Optimistic UI update
     setNutritionRows(prev => [...prev, parseNutritionRow(row)]);
+
+    // Persist to recent foods so it appears in future searches
+    saveToRecentFoods({
+      foodName:  foodData.foodName,
+      calories:  foodData.calories,
+      protein:   foodData.protein,
+      carbs:     foodData.carbs,
+      fats:      foodData.fats,
+      fibre:     foodData.fibre || 0,
+      servingG:  foodData.servingG,
+    });
 
     try {
       await appendToSheet('NutritionLogs', row);
