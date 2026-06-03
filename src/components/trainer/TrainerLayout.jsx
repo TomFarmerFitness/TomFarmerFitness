@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
@@ -48,7 +49,7 @@ const NAV = [
         <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/>
       </svg>
     ),
-    badge: null, // populated dynamically via context in a future enhancement
+    badge: null,
   },
   {
     path: '/trainer/settings',
@@ -65,6 +66,16 @@ const NAV = [
 export default function TrainerLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const handleLogout = () => {
     logout();
@@ -74,12 +85,32 @@ export default function TrainerLayout() {
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#0f172a', fontFamily: "'Inter', system-ui, sans-serif" }}>
 
+      {/* Mobile overlay */}
+      {isMobile && sidebarOpen && (
+        <div
+          onClick={() => setSidebarOpen(false)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.5)',
+            zIndex: 299,
+          }}
+        />
+      )}
+
       {/* Sidebar */}
       <aside style={{
         width: '232px', flexShrink: 0,
         background: '#111827',
         borderRight: '1px solid rgba(255,255,255,0.05)',
         display: 'flex', flexDirection: 'column',
+        ...(isMobile ? {
+          position: 'fixed',
+          left: sidebarOpen ? '0' : '-240px',
+          top: 0,
+          bottom: 0,
+          zIndex: 300,
+          transition: 'left 0.25s ease',
+        } : {}),
       }}>
 
         {/* Brand */}
@@ -104,6 +135,7 @@ export default function TrainerLayout() {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={() => isMobile && setSidebarOpen(false)}
               style={({ isActive }) => ({
                 display: 'flex', alignItems: 'center', gap: '10px',
                 padding: '9px 10px', borderRadius: '8px', marginBottom: '2px',
@@ -174,8 +206,26 @@ export default function TrainerLayout() {
         </div>
       </aside>
 
+      {/* Hamburger button (mobile only) */}
+      {isMobile && (
+        <button onClick={() => setSidebarOpen(o => !o)} style={{
+          position: 'fixed', top: '12px', left: '12px', zIndex: 400,
+          background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '8px', padding: '8px', cursor: 'pointer', color: '#f8fafc',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+            <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+      )}
+
       {/* Main content */}
-      <main style={{ flex: 1, overflow: 'auto', padding: '32px 36px', minWidth: 0 }}>
+      <main style={{
+        flex: 1, overflow: 'auto', padding: '32px 36px', minWidth: 0,
+        marginLeft: isMobile ? '0' : '0',
+        paddingTop: isMobile ? '52px' : '32px',
+      }}>
         <Outlet />
       </main>
     </div>

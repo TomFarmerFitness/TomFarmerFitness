@@ -351,63 +351,66 @@ function MealSection({ mealType, items, onAddFood, onDeleteItem }) {
 
 // ─── BarcodeScanner ──────────────────────────────────────────────────────────
 
+async function fetchBarcodeProduct(barcode) {
+  const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+  const data = await res.json();
+  if (!data || data.status === 0 || !data.product) return null;
+  const p = data.product;
+  const n = p.nutriments || {};
+  const rawServing = parseFloat(p.serving_quantity) || 0;
+  const servingSize = rawServing > 0 ? rawServing : 100;
+  const scale = servingSize / 100;
+  return {
+    foodName:    p.product_name_en || p.product_name || p.abbreviated_product_name || 'Unknown Product',
+    servingSize,
+    calories: Math.round((parseFloat(n['energy-kcal_100g'] || n['energy-kcal'] || 0)) * scale),
+    protein:  Math.round((parseFloat(n['proteins_100g']    || n['proteins']    || 0)) * scale * 10) / 10,
+    carbs:    Math.round((parseFloat(n['carbohydrates_100g'] || n['carbohydrates'] || 0)) * scale * 10) / 10,
+    fats:     Math.round((parseFloat(n['fat_100g']         || n['fat']         || 0)) * scale * 10) / 10,
+    fibre:    Math.round((parseFloat(n['fiber_100g'] || n['fibers_100g'] || n['fiber'] || 0)) * scale * 10) / 10,
+  };
+}
+
 function BarcodeScanner({ onResult, onClose }) {
   const videoRef  = useRef(null);
   const streamRef = useRef(null);
   const [status,  setStatus]  = useState('starting'); // 'starting'|'scanning'|'found'|'error'
   const [message, setMessage] = useState('Starting camera…');
+  const [noNativeScanner, setNoNativeScanner] = useState(false);
+  const [manualLookupStatus, setManualLookupStatus] = useState(null); // null|'loading'|'error'
+
+  async function lookupBarcode(barcode) {
+    setStatus('found');
+    setMessage('Looking up product…');
+    setManualLookupStatus('loading');
+    try {
+      const food = await fetchBarcodeProduct(barcode);
+      if (!food) {
+        setStatus('error');
+        setMessage('Product not found. Try another barcode or use manual entry.');
+        setManualLookupStatus('error');
+        return;
+      }
+      onResult(food);
+    } catch {
+      setStatus('error');
+      setMessage('Failed to fetch product data. Check your connection.');
+      setManualLookupStatus('error');
+    }
+  }
 
   useEffect(() => {
+    if (!('BarcodeDetector' in window)) {
+      setNoNativeScanner(true);
+      return;
+    }
+
     let active    = true;
     let detector  = null;
     let intervalId = null;
 
-    async function lookupBarcode(barcode) {
-      setStatus('found');
-      setMessage('Looking up product…');
-      try {
-        const res  = await fetch(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-        const data = await res.json();
-
-        if (!data || data.status === 0 || !data.product) {
-          setStatus('error');
-          setMessage('Product not found. Try another barcode or use manual entry.');
-          return;
-        }
-
-        const p = data.product;
-        const n = p.nutriments || {};
-
-        // Prefer serving size if available, otherwise per-100g
-        const rawServing = parseFloat(p.serving_quantity) || 0;
-        const servingSize = rawServing > 0 ? rawServing : 100;
-        const scale = servingSize / 100;
-
-        const food = {
-          foodName:    p.product_name_en || p.product_name || p.abbreviated_product_name || 'Unknown Product',
-          servingSize,
-          calories: Math.round((parseFloat(n['energy-kcal_100g'] || n['energy-kcal'] || 0)) * scale),
-          protein:  Math.round((parseFloat(n['proteins_100g']    || n['proteins']    || 0)) * scale * 10) / 10,
-          carbs:    Math.round((parseFloat(n['carbohydrates_100g'] || n['carbohydrates'] || 0)) * scale * 10) / 10,
-          fats:     Math.round((parseFloat(n['fat_100g']         || n['fat']         || 0)) * scale * 10) / 10,
-          fibre:    Math.round((parseFloat(n['fiber_100g'] || n['fibers_100g'] || n['fiber'] || 0)) * scale * 10) / 10,
-        };
-
-        onResult(food);
-      } catch {
-        setStatus('error');
-        setMessage('Failed to fetch product data. Check your connection.');
-      }
-    }
-
     async function start() {
       try {
-        if (!('BarcodeDetector' in window)) {
-          setStatus('error');
-          setMessage('Barcode scanning requires Chrome 83+ or Safari 17+. Please update your browser or use manual entry.');
-          return;
-        }
-
         detector = new window.BarcodeDetector({
           formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39', 'qr_code'],
         });
@@ -463,9 +466,59 @@ function BarcodeScanner({ onResult, onClose }) {
         streamRef.current.getTracks().forEach(t => t.stop());
       }
     };
-  }, [onResult]);
+  }, []);
 
   const isScanning = status === 'scanning';
+
+  // iOS Safari / no BarcodeDetector fallback
+  if (noNativeScanner) {
+    return (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 300,
+        background: '#070c14',
+        display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        padding: '24px',
+      }}>
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute', top: 20, right: 20,
+            width: 44, height: 44, borderRadius: '50%',
+            background: 'rgba(255,255,255,0.15)', border: 'none',
+            color: '#fff', fontSize: 22, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >✕</button>
+        <div style={{ color: '#f8fafc', fontSize: 16, fontWeight: 600, marginBottom: 16, textAlign: 'center' }}>
+          Scan Barcode
+        </div>
+        <p style={{ color: '#94a3b8', fontSize: '13px', textAlign: 'center', margin: '0 0 16px' }}>
+          Barcode scanning isn&apos;t supported in this browser. Enter the barcode number manually:
+        </p>
+        <div style={{ display: 'flex', gap: '8px', width: '100%', maxWidth: '360px' }}>
+          <input
+            type="number"
+            inputMode="numeric"
+            placeholder="e.g. 9300650521097"
+            style={{ flex: 1, padding: '12px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px', color: '#f8fafc', fontSize: '15px' }}
+            onKeyDown={e => { if (e.key === 'Enter') lookupBarcode(e.target.value); }}
+            id="manual-barcode-input"
+          />
+          <button
+            onClick={() => { const v = document.getElementById('manual-barcode-input').value; if (v) lookupBarcode(v); }}
+            style={{ padding: '12px 16px', background: '#f97316', border: 'none', borderRadius: '10px', color: '#fff', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}
+          >Go</button>
+        </div>
+        {manualLookupStatus === 'loading' && (
+          <div style={{ marginTop: 16, color: '#94a3b8', fontSize: 13 }}>Looking up product…</div>
+        )}
+        {manualLookupStatus === 'error' && (
+          <div style={{ marginTop: 16, color: '#fca5a5', fontSize: 13 }}>Product not found. Check the barcode and try again.</div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{
