@@ -1540,6 +1540,6 @@ export default function ProgramLibraryPage() {
           onClose={() => setGenerate(false)}
           onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
       )}
-    </>
+    </div>
   );
 }
