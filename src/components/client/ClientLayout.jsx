@@ -99,13 +99,19 @@ export default function ClientLayout() {
       <style>{`
         @keyframes tabFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-        html, body { overflow-x: hidden !important; max-width: 100vw; overscroll-behavior: none; }
+        html, body, #root {
+          overflow-x: hidden !important;
+          max-width: 100vw !important;
+          width: 100% !important;
+          overscroll-behavior: none;
+          position: relative;
+        }
         @media (max-width: 360px) {
           .nav-label { font-size: 8px !important; }
           .nav-icon svg { width: 18px !important; height: 18px !important; }
         }
       `}</style>
-      <div style={{ minHeight: '100dvh', background: '#070c14', overflow: 'hidden', maxWidth: '100vw' }}>
+      <div style={{ minHeight: '100dvh', background: '#070c14', overflow: 'hidden', width: '100vw', maxWidth: '100vw', position: 'relative' }}>
 
         {/* Fixed Header */}
         <header style={{
@@ -165,7 +171,7 @@ export default function ClientLayout() {
           position: 'fixed', zIndex: 1,
           top: 'calc(56px + env(safe-area-inset-top, 0px))', bottom: '0px',
           left: 0, right: 0,
-          width: '100%', maxWidth: '100vw',
+          width: '100vw', maxWidth: '100vw',
           overflowY: 'auto', overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',

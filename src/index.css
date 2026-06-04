@@ -5,7 +5,17 @@
   box-sizing: border-box;
 }
 
-html, body {
+html {
+  margin: 0;
+  padding: 0;
+  /* iOS Safari: overflow-x on html is required to actually block horizontal scroll */
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+  position: relative;
+}
+
+body {
   margin: 0;
   padding: 0;
   background: #0f172a;
@@ -13,11 +23,11 @@ html, body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* Prevent pull-to-refresh on mobile interfering with scroll */
   overscroll-behavior-y: none;
-  /* Prevent horizontal scroll / overflow */
   overflow-x: hidden;
+  width: 100%;
   max-width: 100vw;
+  position: relative;
 }
 
 #root {
@@ -25,6 +35,7 @@ html, body {
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
+  position: relative;
 }
 
 /* ── Mobile interaction fixes ─────────────────────────────────────── */
