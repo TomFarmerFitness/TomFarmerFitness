@@ -103,7 +103,7 @@ async function upsertSheetRow(tab, idColumn, id, rowData) {
 }
 
 async function deleteSheetRowsWhere(tab, column, value) {
-  return callProxy({ action: 'deleteRowsWhere', tab, column, value }).catch(() => {});
+  return callProxy({ action: 'deleteRowsWhere', tab, column, value });
 }
 
 
@@ -1419,9 +1419,18 @@ export default function ProgramLibraryPage() {
   };
 
   const handleDeleteProgram = async (progId) => {
-    await deleteSheetRowsWhere('Programs', 'ProgramID', progId);
-    await deleteSheetRowsWhere('ClientPrograms', 'ProgramID', progId);
-    await fetchData();
+    // Optimistic update immediately
+    setPrograms(prev => prev.filter(p => p.id !== progId));
+    try {
+      invalidateCache('Programs');
+      invalidateCache('ClientPrograms');
+      await deleteSheetRowsWhere('Programs', 'ProgramID', progId);
+      await deleteSheetRowsWhere('ClientPrograms', 'ProgramID', progId);
+    } catch (e) {
+      console.error('Delete failed:', e);
+      alert('Could not delete program: ' + (e?.message || String(e)));
+      await fetchData(); // revert by reloading
+    }
   };
 
   // AI generated program — opens in create modal pre-filled
