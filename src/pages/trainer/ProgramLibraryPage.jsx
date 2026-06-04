@@ -1538,7 +1538,8 @@ export default function ProgramLibraryPage() {
       {generateOpen && (
         <GenerateAIModal
           onClose={() => setGenerate(false)}
- 
           onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
       )}
-    <
+    </>
+  );
+}
