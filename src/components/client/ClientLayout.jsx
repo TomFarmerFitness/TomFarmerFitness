@@ -99,13 +99,13 @@ export default function ClientLayout() {
       <style>{`
         @keyframes tabFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
-        body { overscroll-behavior: none; }
+        html, body { overflow-x: hidden !important; max-width: 100vw; overscroll-behavior: none; }
         @media (max-width: 360px) {
           .nav-label { font-size: 8px !important; }
           .nav-icon svg { width: 18px !important; height: 18px !important; }
         }
       `}</style>
-      <div style={{ minHeight: '100dvh', background: '#070c14' }}>
+      <div style={{ minHeight: '100dvh', background: '#070c14', overflow: 'hidden', maxWidth: '100vw' }}>
 
         {/* Fixed Header */}
         <header style={{
@@ -165,14 +165,15 @@ export default function ClientLayout() {
           position: 'fixed', zIndex: 1,
           top: 'calc(56px + env(safe-area-inset-top, 0px))', bottom: '0px',
           left: 0, right: 0,
-          width: '100%',
+          width: '100%', maxWidth: '100vw',
           overflowY: 'auto', overflowX: 'hidden',
           WebkitOverflowScrolling: 'touch',
           overscrollBehavior: 'contain',
+          touchAction: 'pan-y',
           background: '#0f172a',
           paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 12px))',
         }}>
-          <div key={location.pathname} style={{ animation: 'tabFadeIn 0.18s ease', minHeight: '100%' }}>
+          <div key={location.pathname} style={{ animation: 'tabFadeIn 0.18s ease', minHeight: '100%', overflowX: 'hidden', maxWidth: '100vw' }}>
             <Outlet />
           </div>
         </div>
@@ -181,8 +182,7 @@ export default function ClientLayout() {
         <nav style={{
           position: 'fixed', bottom: 0, zIndex: 200,
           left: 0, right: 0,
-          width: '100%', maxWidth: '430px',
-          margin: '0 auto',
+          width: '100%',
           height: 'auto',
           minHeight: '56px',
           paddingBottom: 'env(safe-area-inset-bottom, 0px)',
