@@ -166,21 +166,28 @@ export default function ClientLayout() {
           </div>
         </header>
 
-        {/* Scrollable Content */}
+        {/* Outer clip container — iOS Safari ignores overflow-x:hidden when overflow-y:auto
+             is on the SAME element, so we use a separate clip wrapper */}
         <div style={{
           position: 'fixed', zIndex: 1,
           top: 'calc(56px + env(safe-area-inset-top, 0px))', bottom: '0px',
           left: 0, right: 0,
           width: '100vw', maxWidth: '100vw',
-          overflowY: 'auto', overflowX: 'hidden',
-          WebkitOverflowScrolling: 'touch',
-          overscrollBehavior: 'contain',
-          touchAction: 'pan-y',
+          overflow: 'hidden',
           background: '#0f172a',
-          paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 12px))',
         }}>
-          <div key={location.pathname} style={{ animation: 'tabFadeIn 0.18s ease', minHeight: '100%', overflowX: 'hidden', maxWidth: '100vw' }}>
-            <Outlet />
+          {/* Inner scroll container — vertical only */}
+          <div style={{
+            width: '100%', height: '100%',
+            overflowY: 'auto', overflowX: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            overscrollBehavior: 'contain',
+            touchAction: 'pan-y',
+            paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 12px))',
+          }}>
+            <div key={location.pathname} style={{ animation: 'tabFadeIn 0.18s ease', minHeight: '100%', width: '100%', overflowX: 'hidden' }}>
+              <Outlet />
+            </div>
           </div>
         </div>
 
