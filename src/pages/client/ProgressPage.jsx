@@ -797,13 +797,13 @@ export default function ProgressPage() {
   // ── Fetch data ─────────────────────────────────────────────────────────────
 
   const fetchData = useCallback(async () => {
-    if (!user?.clientID) return;
+    if (!user?.clientID) { setLoading(false); return; }
     setLoading(true);
     setError('');
     try {
       const [clients, bodyMetrics, progressPhotos] = await Promise.all([
         readSheet('Clients'),
-        readSheet('BodyMetrics'),
+        readSheet('BodyMetrics').catch(() => []),      // graceful if tab missing
         readSheet('ProgressPhotos').catch(() => []),   // graceful if tab missing
       ]);
 
@@ -1150,10 +1150,4 @@ export default function ProgressPage() {
       {showCompare && (
         <CompareModal
           photos={photos.filter(p => compareSelected.includes(p.photoId))}
-          onClose={() => { setShowCompare(false); setCompareMode(false); setCompareSelected([]); }}
-        />
-      )}
-    </div>
-  );
-}
-
+          onClose={() => { setShowCompare(false); setCompareMode(fal

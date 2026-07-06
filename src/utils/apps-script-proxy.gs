@@ -26,7 +26,7 @@ function doPost(e) {
     // ── Append a row to a named sheet tab ────────────────────────────────────
     if (data.action === 'append') {
       var sheet = ss.getSheetByName(data.tab);
-      if (!sheet) throw new Error("Tab '" + data.tab + "' not found");
+      if (!sheet) sheet = ss.insertSheet(data.tab); // auto-create tab on first write
 
       var lastCol = sheet.getLastColumn();
       // Auto-create any missing column headers
@@ -708,5 +708,4 @@ function doGet() {
 function ok(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(Object.assign({ success: true }, payload)))
-    .setMimeType(ContentService.MimeType.JSON);
-}
+    .setMimeType(ContentService.Mim
