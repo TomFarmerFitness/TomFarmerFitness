@@ -24,6 +24,9 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Portal target for modals — renders outside the clip-div stacking context so
+         z-indexes work correctly against the fixed nav bar -->
+    <div id="modal-root"></div>
     <!-- ZXing barcode/QR library — loaded before React so window.ZXing is always available -->
     <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.18.6/umd/index.min.js"></script>
     <script type="module" src="/src/main.jsx"></script>

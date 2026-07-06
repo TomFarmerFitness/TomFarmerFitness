@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { readSheet, appendToSheet, lookupFood } from '../../utils/sheets';
 import { useAuth } from '../../context/AuthContext';
 // ZXing is loaded from CDN in index.html as window.ZXing
@@ -527,7 +528,8 @@ function BarcodeScanner({ onResult, onClose }) {
 
   const scanSize = Math.min(window.innerWidth - 64, 280);
 
-  return (
+  const portalTarget = document.getElementById('modal-root') || document.body;
+  return createPortal(
     <>
       <style>{`
         @keyframes scanLine {
@@ -650,7 +652,8 @@ function BarcodeScanner({ onResult, onClose }) {
           {notFound && <div style={{ marginTop: 8, fontSize: 12, color: '#fca5a5' }}>Product not found. Check the number and try again.</div>}
         </div>
       </div>
-    </>
+    </>,
+    portalTarget
   );
 }
 
@@ -697,6 +700,20 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
   // Manual entry fallback
   const [manualMode,  setManualMode]  = useState(false);
   const [manualFood,  setManualFood]  = useState({ name: '', calories: '', protein: '', carbs: '', fats: '' });
+
+  // Prevent background scroll while modal is open (iOS-compatible)
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top      = `-${scrollY}px`;
+    document.body.style.width    = '100%';
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top      = '';
+      document.body.style.width    = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
 
   // Slide-in animation
   useEffect(() => {
@@ -814,7 +831,8 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
     cursor: 'pointer',
   };
 
-  return (
+  const modalRoot = document.getElementById('modal-root') || document.body;
+  return createPortal(
     <>
       {showScanner && (
         <BarcodeScanner
@@ -1078,7 +1096,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
           </div>
         </div>
       </div>
-    </>
+    </>, modalRoot
   );
 }
 
@@ -1277,6 +1295,20 @@ const MICRO_RDI = [
 ];
 
 function MicronutrientsPanel({ nutritionRows, onClose }) {
+  // Prevent background scroll while panel is open (iOS-compatible)
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top      = `-${scrollY}px`;
+    document.body.style.width    = '100%';
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top      = '';
+      document.body.style.width    = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
   // Aggregate micronutrients from all entries that have the data
   const totals = {};
   let hasSomeData = false;
@@ -1289,7 +1321,8 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
     });
   });
 
-  return (
+  const portalTarget = document.getElementById('modal-root') || document.body;
+  return createPortal(
     <>
       <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.7)' }} />
       <div style={{
@@ -1372,7 +1405,7 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
           )}
         </div>
       </div>
-    </>
+    </>, portalTarget
   );
 }
 
@@ -1625,39 +1658,4 @@ export default function NutritionPage() {
             <button
               onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
               style={{
-                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
-                background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
-                cursor: 'pointer',
-              }}
-            >
-              + Add Food
-            </button>
-          </div>
-        </>
-      )}
-
-      {/* ── WEEKLY VIEW ── */}
-      {activeTab === 'weekly' && (
-        <WeeklyView nutritionRows={nutritionRows} targets={targets} />
-      )}
-
-      {/* ── AddFoodModal ── */}
-      {showAddFood && (
-        <AddFoodModal
-          initialMealType={addFoodMeal}
-          clientTargets={targets}
-          onSave={handleSaveFood}
-          onClose={() => setShowAddFood(false)}
-        />
-      )}
-
-      {/* ── Micronutrients panel ── */}
-      {showMicros && (
-        <MicronutrientsPanel
-          nutritionRows={dayRows}
-          onClose={() => setShowMicros(false)}
-        />
-      )}
-    </div>
-  );
-}
+                width: '100%

@@ -25,6 +25,4 @@ package-lock.json
 .DS_Store
 *.suo
 *.ntvs*
-*.njsproj
-*.sln
-*.sw?
+*.nj
