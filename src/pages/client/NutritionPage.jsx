@@ -56,19 +56,22 @@ function getLast7Days(anchorDate) {
 
 // Parse a NutritionLogs row — handles both old format (MealName = food name) and new format
 function parseNutritionRow(row) {
+  let micronutrients = null;
+  try { if (row.MicronutrientsJSON) micronutrients = JSON.parse(row.MicronutrientsJSON); } catch {}
   return {
-    logId:      row.LogID        || '',
-    clientId:   row.ClientID     || '',
-    date:       row.Date         || '',
-    mealType:   row.MealType     || row.MealName || 'Snacks',
-    foodName:   row.FoodName     || row.MealName || '',
-    servingG:   parseFloat(row.ServingG)  || 100,
-    calories:   parseFloat(row.Calories)  || 0,
-    protein:    parseFloat(row.Protein)   || 0,
-    carbs:      parseFloat(row.Carbs)     || 0,
-    fats:       parseFloat(row.Fats)      || 0,
-    fibre:      parseFloat(row.Fibre)     || 0,
-    loggedAt:   row.LoggedAt     || '',
+    logId:          row.LogID        || '',
+    clientId:       row.ClientID     || '',
+    date:           row.Date         || '',
+    mealType:       row.MealType     || row.MealName || 'Snacks',
+    foodName:       row.FoodName     || row.MealName || '',
+    servingG:       parseFloat(row.ServingG)  || 100,
+    calories:       parseFloat(row.Calories)  || 0,
+    protein:        parseFloat(row.Protein)   || 0,
+    carbs:          parseFloat(row.Carbs)     || 0,
+    fats:           parseFloat(row.Fats)      || 0,
+    fibre:          parseFloat(row.Fibre)     || 0,
+    loggedAt:       row.LoggedAt     || '',
+    micronutrients, // null if not available (non-barcode foods)
   };
 }
 
@@ -379,6 +382,13 @@ async function fetchBarcodeProduct(barcode) {
   const rawServing = parseFloat(p.serving_quantity) || 0;
   const servingSize = rawServing > 0 ? rawServing : 100;
   const scale = servingSize / 100;
+
+  // Helper to extract a nutrient value per serving (scaled from per-100g)
+  function nu(key, alt) {
+    const v = parseFloat(n[key] || n[alt] || 0);
+    return Math.round(v * scale * 100) / 100;
+  }
+
   return {
     foodName:    p.product_name_en || p.product_name || p.abbreviated_product_name || 'Unknown Product',
     servingSize,
@@ -387,6 +397,21 @@ async function fetchBarcodeProduct(barcode) {
     carbs:    Math.round((parseFloat(n['carbohydrates_100g'] || n['carbohydrates'] || 0)) * scale * 10) / 10,
     fats:     Math.round((parseFloat(n['fat_100g']         || n['fat']         || 0)) * scale * 10) / 10,
     fibre:    Math.round((parseFloat(n['fiber_100g'] || n['fibers_100g'] || n['fiber'] || 0)) * scale * 10) / 10,
+    // Micronutrients (per serving, scaled from per-100g)
+    micronutrients: {
+      vitaminA:   nu('vitamin-a_100g',   'vitamin-a'),
+      vitaminC:   nu('vitamin-c_100g',   'vitamin-c'),
+      vitaminD:   nu('vitamin-d_100g',   'vitamin-d'),
+      vitaminE:   nu('vitamin-e_100g',   'vitamin-e'),
+      vitaminK:   nu('vitamin-k_100g',   'vitamin-k'),
+      vitaminB12: nu('vitamin-b12_100g', 'vitamin-b12'),
+      calcium:    nu('calcium_100g',     'calcium'),
+      iron:       nu('iron_100g',        'iron'),
+      magnesium:  nu('magnesium_100g',   'magnesium'),
+      zinc:       nu('zinc_100g',        'zinc'),
+      potassium:  nu('potassium_100g',   'potassium'),
+      sodium:     nu('sodium_100g',      'sodium'),
+    },
   };
 }
 
@@ -396,10 +421,12 @@ function BarcodeScanner({ onResult, onClose }) {
   const canvasRef   = useRef(null);
   const intervalRef = useRef(null);
   const activeRef   = useRef(true);
-  const phaseRef    = useRef('starting'); // mirrors phase — readable inside interval without stale closure
+  const phaseRef    = useRef('idle'); // mirrors phase — readable inside interval without stale closure
 
-  const [phase,     setPhase]    = useState('starting');
-  const [message,   setMessage]  = useState('Starting camera…');
+  // iOS PWA requires getUserMedia to be called DIRECTLY from a user gesture.
+  // We start in 'idle' and wait for the user to tap the camera button.
+  const [phase,     setPhase]    = useState('idle');
+  const [message,   setMessage]  = useState('Tap the button below to open your camera');
   const [manualVal, setManualVal] = useState('');
   const [looking,   setLooking]  = useState(false);
   const [notFound,  setNotFound] = useState(false);
@@ -436,53 +463,55 @@ function BarcodeScanner({ onResult, onClose }) {
     return null;
   }
 
-  useEffect(() => {
-    activeRef.current = true;
+  // Called directly from a button tap — satisfies iOS PWA user-gesture requirement
+  async function startCamera() {
+    updatePhase('starting');
+    setMessage('Starting camera…');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+      streamRef.current = stream;
+      const video = videoRef.current;
+      if (video) {
+        video.srcObject = stream;
+        video.onloadedmetadata = async () => {
+          try { await video.play(); } catch {}
+        };
+      }
 
-    async function startCamera() {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-        });
-        if (!activeRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
-        streamRef.current = stream;
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
-        }
-
-        if ('BarcodeDetector' in window) {
-          updatePhase('live');
-          setMessage('Hold barcode steady in frame…');
-          // Auto-scan using canvas frames every 400ms — avoids stale closure bug, reliable on iOS
-          intervalRef.current = setInterval(async () => {
-            if (!activeRef.current || phaseRef.current === 'found') return;
-            const code = await captureFrame();
-            if (code) {
-              clearInterval(intervalRef.current);
-              updatePhase('found');
-              setMessage('✓ Barcode detected!');
-              await lookupBarcode(code);
-            }
-          }, 400);
-        } else {
-          updatePhase('live');
-          setMessage('Point camera at barcode, then tap Scan');
-        }
-      } catch (err) {
-        if (!activeRef.current) return;
-        if (err.name === 'NotAllowedError') {
-          updatePhase('manual');
-          setMessage('Camera access denied — use manual entry below');
-        } else {
-          updatePhase('manual');
-          setMessage('Camera unavailable — use manual entry below');
-        }
+      if ('BarcodeDetector' in window) {
+        updatePhase('live');
+        setMessage('Hold barcode steady in frame…');
+        intervalRef.current = setInterval(async () => {
+          if (!activeRef.current || phaseRef.current === 'found') return;
+          const code = await captureFrame();
+          if (code) {
+            clearInterval(intervalRef.current);
+            updatePhase('found');
+            setMessage('✓ Barcode detected!');
+            await lookupBarcode(code);
+          }
+        }, 400);
+      } else {
+        updatePhase('live');
+        setMessage('Point camera at barcode, then tap Scan');
+      }
+    } catch (err) {
+      if (!activeRef.current) return;
+      if (err.name === 'NotAllowedError') {
+        updatePhase('manual');
+        setMessage('Camera access denied — use manual entry below');
+      } else {
+        updatePhase('manual');
+        setMessage('Camera unavailable — use manual entry below');
       }
     }
+  }
 
-    startCamera();
-
+  useEffect(() => {
+    activeRef.current = true;
     return () => {
       activeRef.current = false;
       clearInterval(intervalRef.current);
@@ -527,15 +556,30 @@ function BarcodeScanner({ onResult, onClose }) {
           }}>✕</button>
         </div>
 
-        {/* Camera viewfinder — hidden in manual-only mode */}
-        {phase !== 'manual' && (
+        {/* Tap-to-start button — iOS PWA requires getUserMedia from direct user gesture */}
+        {phase === 'idle' && (
+          <button onClick={startCamera} style={{
+            width: scanSize, height: scanSize,
+            borderRadius: 14, border: '2px dashed rgba(249,115,22,0.5)',
+            background: 'rgba(249,115,22,0.06)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', gap: 10, flexShrink: 0,
+          }}>
+            <span style={{ fontSize: 44 }}>📷</span>
+            <span style={{ color: '#f97316', fontSize: 15, fontWeight: 700 }}>Tap to open camera</span>
+            <span style={{ color: '#64748b', fontSize: 12 }}>Camera opens on tap</span>
+          </button>
+        )}
+
+        {/* Camera viewfinder — shown once camera has been started */}
+        {phase !== 'manual' && phase !== 'idle' && (
           <div style={{
             position: 'relative', width: scanSize, height: scanSize,
             borderRadius: 14, overflow: 'hidden', background: '#000',
             border: `2px solid ${phase === 'found' ? '#22c55e' : 'rgba(249,115,22,0.5)'}`,
             flexShrink: 0,
           }}>
-            <video ref={videoRef} playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <video ref={videoRef} playsInline muted autoPlay style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             <canvas ref={canvasRef} style={{ display: 'none' }} />
 
             {/* Corner brackets */}
@@ -568,9 +612,12 @@ function BarcodeScanner({ onResult, onClose }) {
           </div>
         )}
 
-        {/* Scan button — shown when camera is live but no auto-detect */}
-        {phase === 'live' && (
-          <button onClick={captureAndDetect} style={{
+        {/* Manual scan button — shown when BarcodeDetector unavailable but camera is live */}
+        {phase === 'live' && !('BarcodeDetector' in window) && (
+          <button onClick={async () => {
+            const code = await captureFrame();
+            if (code) { updatePhase('found'); setMessage('✓ Barcode detected!'); await lookupBarcode(code); }
+          }} style={{
             marginTop: 12, padding: '11px 28px',
             background: '#f97316', border: 'none', borderRadius: 10,
             color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
@@ -723,11 +770,21 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
   function handleSave() {
     if (!selected) return;
     const scaled = scaleNutrition(selected, servingG);
+    // Scale micronutrients proportionally to the chosen serving size
+    let micronutrients = null;
+    if (selected.micronutrients) {
+      const ratio = servingG / (selected.servingSize || 100);
+      micronutrients = {};
+      Object.entries(selected.micronutrients).forEach(([k, v]) => {
+        micronutrients[k] = Math.round(v * ratio * 100) / 100;
+      });
+    }
     onSave({
       foodName: selected.foodName,
       mealType,
       servingG,
       ...scaled,
+      micronutrients,
     });
     closeWithAnimation(onClose);
   }
@@ -1208,6 +1265,123 @@ function WeeklyView({ nutritionRows, targets }) {
 }
 
 
+// ─── MicronutrientsPanel ──────────────────────────────────────────────────────
+
+const MICRO_RDI = [
+  { key: 'vitaminC',   label: 'Vitamin C',   unit: 'mg',  rdi: 90,   color: '#f97316' },
+  { key: 'calcium',    label: 'Calcium',     unit: 'mg',  rdi: 1000, color: '#60a5fa' },
+  { key: 'iron',       label: 'Iron',        unit: 'mg',  rdi: 14,   color: '#f87171' },
+  { key: 'potassium',  label: 'Potassium',   unit: 'mg',  rdi: 3500, color: '#a78bfa' },
+  { key: 'magnesium',  label: 'Magnesium',   unit: 'mg',  rdi: 375,  color: '#34d399' },
+  { key: 'zinc',       label: 'Zinc',        unit: 'mg',  rdi: 10,   color: '#fbbf24' },
+  { key: 'sodium',     label: 'Sodium',      unit: 'mg',  rdi: 2300, color: '#94a3b8', isLimit: true },
+  { key: 'vitaminA',   label: 'Vitamin A',   unit: 'mcg', rdi: 900,  color: '#fb923c' },
+  { key: 'vitaminD',   label: 'Vitamin D',   unit: 'mcg', rdi: 20,   color: '#facc15' },
+  { key: 'vitaminE',   label: 'Vitamin E',   unit: 'mg',  rdi: 15,   color: '#4ade80' },
+  { key: 'vitaminK',   label: 'Vitamin K',   unit: 'mcg', rdi: 120,  color: '#86efac' },
+  { key: 'vitaminB12', label: 'Vitamin B12', unit: 'mcg', rdi: 2.4,  color: '#c084fc' },
+];
+
+function MicronutrientsPanel({ nutritionRows, onClose }) {
+  // Aggregate micronutrients from all entries that have the data
+  const totals = {};
+  let hasSomeData = false;
+  MICRO_RDI.forEach(m => { totals[m.key] = 0; });
+  nutritionRows.forEach(row => {
+    if (!row.micronutrients) return;
+    hasSomeData = true;
+    MICRO_RDI.forEach(m => {
+      totals[m.key] += parseFloat(row.micronutrients[m.key] || 0);
+    });
+  });
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 500, background: 'rgba(0,0,0,0.7)' }} />
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 501,
+        background: '#111827', borderRadius: '20px 20px 0 0',
+        padding: '0 0 env(safe-area-inset-bottom, 16px)',
+        maxHeight: '85dvh', display: 'flex', flexDirection: 'column',
+      }}>
+        {/* Handle */}
+        <div style={{ width: 36, height: 4, background: '#334155', borderRadius: 2, margin: '12px auto 0' }} />
+
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 10px' }}>
+          <div>
+            <div style={{ color: '#f8fafc', fontSize: 16, fontWeight: 700 }}>Micronutrients</div>
+            <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Today's intake vs. daily target</div>
+          </div>
+          <button onClick={onClose} style={{
+            width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
+            border: 'none', color: '#f8fafc', fontSize: 16, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>✕</button>
+        </div>
+
+        {/* Body */}
+        <div style={{ overflowY: 'auto', padding: '4px 20px 20px', flex: 1 }}>
+          {!hasSomeData ? (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#475569' }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>🔬</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>No micronutrient data yet</div>
+              <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+                Micronutrient data is captured when you scan a barcode.<br />
+                Manually searched foods don't include this data.
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{ fontSize: 11, color: '#475569', marginBottom: 14, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, lineHeight: 1.5 }}>
+                ℹ️ Data available for barcode-scanned foods only. Foods without micronutrient data contribute 0.
+              </div>
+              {MICRO_RDI.map(m => {
+                const val = Math.round(totals[m.key] * 10) / 10;
+                const pct = Math.min(val / m.rdi, 1);
+                const over = val > m.rdi;
+                const barColor = m.isLimit
+                  ? (over ? '#f87171' : '#94a3b8')
+                  : (over ? '#22c55e' : m.color);
+                return (
+                  <div key={m.key} style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{m.label}</span>
+                      <span style={{ fontSize: 12, color: '#64748b' }}>
+                        <span style={{ color: over ? (m.isLimit ? '#f87171' : '#22c55e') : '#94a3b8', fontWeight: 600 }}>
+                          {val}{m.unit}
+                        </span>
+                        {' / '}{m.rdi}{m.unit}
+                        {m.isLimit && <span style={{ color: '#475569', fontSize: 10, marginLeft: 4 }}>(limit)</span>}
+                      </span>
+                    </div>
+                    <div style={{ height: 6, background: 'rgba(255,255,255,0.07)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${pct * 100}%`,
+                        background: barColor, borderRadius: 3,
+                        transition: 'width 0.6s ease',
+                        minWidth: val > 0 ? 4 : 0,
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 10, color: '#475569', marginTop: 3 }}>
+                      {over
+                        ? m.isLimit
+                          ? `${Math.round((val - m.rdi) * 10) / 10}${m.unit} over limit`
+                          : `✓ Target met`
+                        : `${Math.round((m.rdi - val) * 10) / 10}${m.unit} to go`
+                      }
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── NutritionPage (main) ──────────────────────────────────────────────────
 
 export default function NutritionPage() {
@@ -1226,6 +1400,9 @@ export default function NutritionPage() {
   // Add Food modal
   const [showAddFood,    setShowAddFood]    = useState(false);
   const [addFoodMeal,    setAddFoodMeal]    = useState('Breakfast');
+
+  // Micronutrients panel
+  const [showMicros,     setShowMicros]     = useState(false);
 
   // ── Fetch data ────────────────────────────────────────────────────────────
 
@@ -1287,18 +1464,19 @@ export default function NutritionPage() {
   async function handleSaveFood(foodData) {
     const logId = `NL-${Date.now()}`;
     const row = {
-      LogID:     logId,
-      ClientID:  user.clientID,
-      Date:      selectedDate,
-      MealType:  foodData.mealType,
-      FoodName:  foodData.foodName,
-      ServingG:  foodData.servingG,
-      Calories:  foodData.calories,
-      Protein:   foodData.protein,
-      Carbs:     foodData.carbs,
-      Fats:      foodData.fats,
-      Fibre:     foodData.fibre || 0,
-      LoggedAt:  new Date().toISOString(),
+      LogID:              logId,
+      ClientID:           user.clientID,
+      Date:               selectedDate,
+      MealType:           foodData.mealType,
+      FoodName:           foodData.foodName,
+      ServingG:           foodData.servingG,
+      Calories:           foodData.calories,
+      Protein:            foodData.protein,
+      Carbs:              foodData.carbs,
+      Fats:               foodData.fats,
+      Fibre:              foodData.fibre || 0,
+      LoggedAt:           new Date().toISOString(),
+      MicronutrientsJSON: foodData.micronutrients ? JSON.stringify(foodData.micronutrients) : '',
     };
 
     // Optimistic UI update
@@ -1415,6 +1593,28 @@ export default function NutritionPage() {
             </div>
           )}
 
+          {/* Micronutrients button */}
+          <button
+            onClick={() => setShowMicros(true)}
+            style={{
+              width: '100%', padding: '12px 16px',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.08)',
+              borderRadius: 12, cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              marginBottom: 4,
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 18 }}>🔬</span>
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>Micronutrients</div>
+                <div style={{ fontSize: 11, color: '#475569' }}>View vitamins &amp; minerals</div>
+              </div>
+            </div>
+            <span style={{ fontSize: 16, color: '#475569' }}>›</span>
+          </button>
+
           {/* Meal sections */}
           {MEAL_TYPES.map(mt => (
             <MealSection
@@ -1454,6 +1654,14 @@ export default function NutritionPage() {
           clientTargets={targets}
           onSave={handleSaveFood}
           onClose={() => setShowAddFood(false)}
+        />
+      )}
+
+      {/* ── Micronutrients panel ── */}
+      {showMicros && (
+        <MicronutrientsPanel
+          nutritionRows={dayRows}
+          onClose={() => setShowMicros(false)}
         />
       )}
     </div>

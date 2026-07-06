@@ -5,7 +5,7 @@ import config from '../config';
 const AuthContext = createContext(null);
 
 const SESSION_KEY = 'tff_session';
-const SESSION_DAYS = 7;
+const SESSION_DAYS = 365; // keep clients logged in for a full year
 
 // SHA-256 hash using native Web Crypto API (no extra packages needed)
 async function hashPassword(password) {
