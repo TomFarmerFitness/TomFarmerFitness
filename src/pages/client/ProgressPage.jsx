@@ -1150,4 +1150,9 @@ export default function ProgressPage() {
       {showCompare && (
         <CompareModal
           photos={photos.filter(p => compareSelected.includes(p.photoId))}
-          onClose={() => { setShowCompare(false); setCompareMode(fal
+          onClose={() => { setShowCompare(false); setCompareMode(false); setCompareSelected([]); }}
+        />
+      )}
+    </div>
+  );
+}
