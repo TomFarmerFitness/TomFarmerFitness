@@ -1,10 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { readSheet, appendToSheet, lookupFood } from '../../utils/sheets';
 import { useAuth } from '../../context/AuthContext';
-import { BrowserMultiFormatReader } from '@zxing/library';
-
-// One shared ZXing reader instance — handles EAN-13, UPC-A, Code-128, QR and more
-const _zxingReader = new BrowserMultiFormatReader();
+// ZXing is loaded from CDN in index.html as window.ZXing
+// Lazy-init a single MultiFormatReader (handles EAN-13, UPC-A, Code-128, QR and more)
+let _zxingReader = null;
+function getZxingReader() {
+  if (_zxingReader) return _zxingReader;
+  if (!window.ZXing?.MultiFormatReader) return null;
+  _zxingReader = new window.ZXing.MultiFormatReader();
+  return _zxingReader;
+}
 
 // ── Recent Foods (localStorage) ──────────────────────────────────────────────
 const RECENT_FOODS_KEY = 'tff_recent_foods';
@@ -448,9 +453,11 @@ function BarcodeScanner({ onResult, onClose }) {
     } catch { if (activeRef.current) { setNotFound(true); setLooking(false); } }
   }
 
-  // Capture a canvas frame and decode using ZXing — works on iOS Safari
-  // ZXing reads pixels directly from the canvas (no BarcodeDetector API needed)
+  // Capture a canvas frame and decode using ZXing (loaded from CDN)
+  // Uses the lower-level ZXing API that works across all versions and on iOS Safari
   function captureFrame() {
+    const reader = getZxingReader();
+    if (!reader) return null; // ZXing CDN not loaded yet — skip this frame
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return null;
@@ -458,9 +465,12 @@ function BarcodeScanner({ onResult, onClose }) {
     canvas.height = video.videoHeight || 480;
     canvas.getContext('2d').drawImage(video, 0, 0);
     try {
-      return _zxingReader.decodeFromCanvas(canvas).getText();
+      const { BinaryBitmap, HybridBinarizer, HTMLCanvasElementLuminanceSource } = window.ZXing;
+      const luma = new HTMLCanvasElementLuminanceSource(canvas);
+      const bmp  = new BinaryBitmap(new HybridBinarizer(luma));
+      return reader.decode(bmp).getText();
     } catch {
-      return null; // NotFoundException — no barcode visible yet, normal between frames
+      return null; // NotFoundException — no barcode in frame yet, normal between scans
     }
   }
 
