@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+package-lock.json
 
 # Environment variables — never commit secrets
 .env
@@ -18,4 +19,12 @@ dist-ssr
 .env.*.local
 
 # Editor directories and files
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
