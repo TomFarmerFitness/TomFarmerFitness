@@ -867,7 +867,24 @@ export default function ClientDetailPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '28px' }}>
             {/* Macro targets */}
             <div style={cardStyle}>
-              <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 16px' }}>Daily Macro Targets</h3>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+                <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>Daily Macro Targets</h3>
+                <button
+                  onClick={() => {
+                    setOverrideForm({
+                      calories: client.DailyCalories || client.TargetCalories || '',
+                      protein:  client.ProteinTarget || client.TargetProtein   || '',
+                      carbs:    client.CarbTarget    || client.TargetCarbs     || '',
+                      fats:     client.FatTarget     || client.TargetFats      || '',
+                    });
+                    setShowOverride(true);
+                  }}
+                  style={{ padding:'5px 12px', borderRadius:'8px', border:'none',
+                    background:'rgba(249,115,22,0.1)', color:'#f97316',
+                    fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
+                  ✏️ Edit Targets
+                </button>
+              </div>
               {client.DailyCalories || client.TargetCalories ? (
                 <>
                   <div style={{ textAlign: 'center', marginBottom: '14px' }}>
