@@ -51,13 +51,18 @@ function countProgramExercises(programId, sessions) {
     }, 0);
 }
 
-function initDays(count, existing = []) {
-  return Array.from({ length: count }, (_, i) => existing[i] || {
-    id:        generateId('day'),
-    dayOrder:  i + 1,
-    dayName:   '',
-    focusArea: '',
-    exercises: [],
+function initDays(daysPerWeek, existing = []) {
+  return Array.from({ length: 7 }, (_, i) => {
+    const isRest = i >= daysPerWeek;
+    if (existing[i]) return { ...existing[i], isRestDay: isRest };
+    return {
+      id:        generateId('day'),
+      dayOrder:  i + 1,
+      dayName:   isRest ? 'Rest Day' : '',
+      focusArea: '',
+      exercises: [],
+      isRestDay: isRest,
+    };
   });
 }
 
@@ -672,6 +677,18 @@ function StepDetails({ data, onChange }) {
             {[1,2,3,4,5,6,7].map(n => <option key={n} value={n}>{n} day{n!==1?'s':''}</option>)}
           </select>
         </div>
+        <div>
+          <label style={labelStyle}>NUMBER OF PHASES</label>
+          <select value={data.numPhases || 3} onChange={e => onChange('numPhases', +e.target.value)} style={inputStyle}>
+            {[1,2,3,4,5,6].map(n => <option key={n} value={n}>{n} phase{n!==1?'s':''}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={labelStyle}>LEVEL</label>
+          <select value={data.level} onChange={e => onChange('level', e.target.value)} style={inputStyle}>
+            {['Beginner','Intermediate','Advanced'].map(l => <option key={l} value={l}>{l}</option>)}
+          </select>
+        </div>
       </div>
 
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
@@ -689,19 +706,11 @@ function StepDetails({ data, onChange }) {
         </div>
       </div>
 
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'14px' }}>
-        <div>
-          <label style={labelStyle}>DURATION (weeks)</label>
-          <input type="number" min={1} max={52} value={data.durationWeeks}
-            onChange={e => onChange('durationWeeks', +e.target.value)}
-            style={inputStyle} />
-        </div>
-        <div>
-          <label style={labelStyle}>LEVEL</label>
-          <select value={data.level} onChange={e => onChange('level', e.target.value)} style={inputStyle}>
-            {['Beginner','Intermediate','Advanced'].map(l => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </div>
+      <div>
+        <label style={labelStyle}>DURATION (weeks)</label>
+        <input type="number" min={1} max={52} value={data.durationWeeks}
+          onChange={e => onChange('durationWeeks', +e.target.value)}
+          style={{ ...inputStyle, width:'50%' }} />
       </div>
 
       <div>
@@ -853,20 +862,32 @@ function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
       )}
 
       {days.map((day, i) => (
-        <div key={day.id} style={{ background:'rgba(255,255,255,0.04)',
-          border:'1px solid rgba(255,255,255,0.08)', borderRadius:'10px', padding:'14px' }}>
+        <div key={day.id} style={{
+          background: day.isRestDay ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
+          border: day.isRestDay ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(255,255,255,0.08)',
+          borderRadius:'10px', padding:'14px', opacity: day.isRestDay ? 0.55 : 1 }}>
           <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
             <div style={{ width:'28px', height:'28px', borderRadius:'50%',
-              background:'rgba(249,115,22,0.15)', border:'1px solid rgba(249,115,22,0.3)',
+              background: day.isRestDay ? 'rgba(100,116,139,0.15)' : 'rgba(249,115,22,0.15)',
+              border: day.isRestDay ? '1px solid rgba(100,116,139,0.3)' : '1px solid rgba(249,115,22,0.3)',
               display:'flex', alignItems:'center', justifyContent:'center',
-              color:'#f97316', fontSize:'12px', fontWeight:700, flexShrink:0 }}>
-              {i + 1}
+              color: day.isRestDay ? '#475569' : '#f97316',
+              fontSize: day.isRestDay ? '14px' : '12px', fontWeight:700, flexShrink:0 }}>
+              {day.isRestDay ? '🌙' : (i + 1)}
             </div>
-            <input
-              value={day.dayName}
-              onChange={e => updateDay(activePhase, i, 'dayName', e.target.value)}
-              placeholder={`Day ${i + 1} name (e.g. Push, Legs, Upper)`}
-              style={{ ...inputStyle, flex:1 }} />
+            {day.isRestDay ? (
+              <div style={{ flex:1, padding:'8px 10px', borderRadius:'8px',
+                background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.04)',
+                color:'#334155', fontSize:'14px' }}>
+                Rest Day
+              </div>
+            ) : (
+              <input
+                value={day.dayName}
+                onChange={e => updateDay(activePhase, i, 'dayName', e.target.value)}
+                placeholder={`Day ${i + 1} name (e.g. Push, Legs, Upper)`}
+                style={{ ...inputStyle, flex:1 }} />
+            )}
           </div>
         </div>
       ))}
@@ -906,8 +927,8 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
         </span>
         {/* name + muscle */}
         <div style={{ flex:1, minWidth:0 }}>
-          <div style={{ color:'#f1f5f9', fontSize:'13px', fontWeight:500,
-            whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{ex.name}</div>
+          <div title={ex.name} style={{ color:'#f1f5f9', fontSize:'13px', fontWeight:500,
+            wordBreak:'break-word', lineHeight:1.3 }}>{ex.name}</div>
           {ex.muscleGroup && <div style={{ color:'#64748b', fontSize:'11px' }}>{ex.muscleGroup}</div>}
         </div>
         {/* sets / reps / rest */}
@@ -988,16 +1009,45 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
 }
 
 // ─── CreateProgramModal — Step 4: Exercise Builder (phase-aware) ─────────────
-function StepExercises({ phases, onPhasesChange, allExercises }) {
-  const [activePhase, setActivePhase] = useState(0);
-  const [activeDay, setActiveDay] = useState(0);
-  const [search, setSearch] = useState('');
-  const [muscleFilter, setMuscleFilter] = useState('All');
 
-  const phase = phases[activePhase] || phases[0];
-  const days  = phase?.days || [];
-  const day   = days[activeDay] || { exercises: [] };
+const TRACKED_MUSCLES = [
+  { key: 'Chest',      label: 'Chest'  },
+  { key: 'Back',       label: 'Back'   },
+  { key: 'Shoulders',  label: 'Delts'  },
+  { key: 'Biceps',     label: 'Bis'    },
+  { key: 'Triceps',    label: 'Tris'   },
+  { key: 'Quads',      label: 'Quads'  },
+  { key: 'Hamstrings', label: 'Hams'   },
+  { key: 'Glutes',     label: 'Glutes' },
+  { key: 'Calves',     label: 'Calves' },
+  { key: 'Core',       label: 'Core'   },
+];
+
+function StepExercises({ phases, onPhasesChange, allExercises }) {
+  const [activePhase,  setActivePhase]  = useState(0);
+  const [activeDay,    setActiveDay]    = useState(0);
+  const [search,       setSearch]       = useState('');
+  const [muscleFilter, setMuscleFilter] = useState('All');
+  const [lastDeleted,  setLastDeleted]  = useState(null);
+  const undoTimerRef = useRef(null);
+
+  const phase     = phases[activePhase] || phases[0];
+  const days      = phase?.days || [];
+  const day       = days[activeDay] || { exercises: [] };
   const exercises = day.exercises || [];
+
+  // Weekly sets per muscle for current phase (all training days combined)
+  const weeklySets = useMemo(() => {
+    const counts = {};
+    (phase?.days || []).forEach(d => {
+      if (d.isRestDay) return;
+      (d.exercises || []).forEach(ex => {
+        const m = ex.muscleGroup || '';
+        if (m) counts[m] = (counts[m] || 0) + (parseInt(ex.sets) || 0);
+      });
+    });
+    return counts;
+  }, [phase]);
 
   const filtered = allExercises.filter(e => {
     const matchSearch = !search || e.Name?.toLowerCase().includes(search.toLowerCase());
@@ -1010,6 +1060,7 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
   };
 
   const addExercise = (ex) => {
+    if (day.isRestDay) return;
     const newEx = {
       id: generateId('exrow'), exerciseId: ex.ExerciseID,
       name: ex.Name, muscleGroup: ex.PrimaryMuscle || '',
@@ -1039,96 +1090,161 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
   };
 
   const removeExercise = (i) => {
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    setLastDeleted({ ex: exercises[i], idx: i });
+    undoTimerRef.current = setTimeout(() => setLastDeleted(null), 6000);
     const exArr = exercises.filter((_, idx) => idx !== i);
     const next = [...days];
     next[activeDay] = { ...day, exercises: exArr };
     updatePhasesDays(next);
   };
 
+  const undoRemove = () => {
+    if (!lastDeleted) return;
+    if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
+    const exArr = [...exercises];
+    exArr.splice(lastDeleted.idx, 0, lastDeleted.ex);
+    const next = [...days];
+    next[activeDay] = { ...day, exercises: exArr };
+    updatePhasesDays(next);
+    setLastDeleted(null);
+  };
+
   const uniqueMuscles = ['All', ...new Set(allExercises.map(e => e.PrimaryMuscle).filter(Boolean))];
 
   return (
-    <div style={{ display:'flex', gap:'12px', height:'400px' }}>
-      {/* Left: search panel */}
-      <div style={{ width:'200px', flexShrink:0, display:'flex', flexDirection:'column', gap:'8px' }}>
-        <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search exercises…"
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
-            borderRadius:'8px', color:'#f1f5f9', fontSize:'13px', padding:'8px 10px', width:'100%', boxSizing:'border-box' }} />
-        <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)}
-          style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
-            borderRadius:'8px', color:'#f1f5f9', fontSize:'12px', padding:'7px 8px', width:'100%' }}>
-          {uniqueMuscles.map(m => <option key={m} value={m}>{m}</option>)}
-        </select>
-        <div style={{ overflowY:'auto', flex:1 }}>
-          {filtered.length === 0 ? (
-            <div style={{ color:'#475569', fontSize:'12px', padding:'8px 0', textAlign:'center' }}>
-              No exercises found
-            </div>
-          ) : filtered.map(ex => (
-            <button key={ex.ExerciseID}
-              onClick={() => addExercise(ex)}
-              style={{ width:'100%', background:'none', border:'none', padding:'7px 4px',
-                display:'flex', alignItems:'center', gap:'6px', cursor:'pointer',
-                borderBottom:'1px solid rgba(255,255,255,0.05)', textAlign:'left' }}
-              onMouseEnter={e => e.currentTarget.style.background='rgba(249,115,22,0.08)'}
-              onMouseLeave={e => e.currentTarget.style.background='none'}>
-              <span style={{ color:'#f97316', fontSize:'14px', flexShrink:0 }}>+</span>
-              <div>
-                <div style={{ color:'#e2e8f0', fontSize:'12px', lineHeight:1.3 }}>{ex.Name}</div>
-                {ex.MuscleGroup && <div style={{ color:'#475569', fontSize:'10px' }}>{ex.MuscleGroup}</div>}
-              </div>
-            </button>
-          ))}
+    <div style={{ display:'flex', flexDirection:'column', gap:'8px', height:'440px' }}>
+
+      {/* ── Weekly sets tracker ── */}
+      <div style={{ flexShrink:0, background:'rgba(0,0,0,0.2)', borderRadius:'8px',
+        padding:'6px 10px', display:'flex', gap:'5px', overflowX:'auto', alignItems:'center' }}>
+        <div style={{ fontSize:'9px', color:'#334155', flexShrink:0, marginRight:'2px',
+          lineHeight:1.4, textTransform:'uppercase', letterSpacing:'0.3px' }}>
+          Sets/wk<br/>(10–15)
         </div>
+        {TRACKED_MUSCLES.map(({ key, label }) => {
+          const sets = weeklySets[key] || 0;
+          const bg    = sets === 0 ? 'rgba(255,255,255,0.04)' : sets < 10 ? 'rgba(251,191,36,0.15)' : sets <= 15 ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+          const color = sets === 0 ? '#475569' : sets < 10 ? '#fbbf24' : sets <= 15 ? '#4ade80' : '#f87171';
+          const bdr   = sets === 0 ? 'rgba(255,255,255,0.06)' : sets < 10 ? 'rgba(251,191,36,0.3)' : sets <= 15 ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)';
+          return (
+            <div key={key} style={{ flexShrink:0, minWidth:'48px', textAlign:'center',
+              background:bg, border:`1px solid ${bdr}`, borderRadius:'6px', padding:'4px 5px' }}>
+              <div style={{ fontSize:'13px', fontWeight:700, color, lineHeight:1 }}>{sets}</div>
+              <div style={{ fontSize:'9px', color:'#64748b', marginTop:'2px', textTransform:'uppercase',
+                letterSpacing:'0.3px' }}>{label}</div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* Right: day builder */}
-      <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px', minWidth:0 }}>
-        {/* Phase tabs (only if multiple phases) */}
-        {phases.length > 1 && (
-          <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0, paddingBottom:'2px' }}>
-            {phases.map((p, i) => (
-              <button key={p.id} onClick={() => { setActivePhase(i); setActiveDay(0); }}
-                style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
-                  whiteSpace:'nowrap', fontSize:'11px', fontWeight: activePhase===i ? 600 : 400,
-                  background: activePhase===i ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.06)',
-                  color: activePhase===i ? '#f97316' : '#64748b', transition:'all 0.15s', flexShrink:0 }}>
-                {p.name || `Phase ${i+1}`}
+      {/* ── Main two-column layout ── */}
+      <div style={{ display:'flex', gap:'12px', flex:1, minHeight:0 }}>
+        {/* Left: exercise search */}
+        <div style={{ width:'200px', flexShrink:0, display:'flex', flexDirection:'column', gap:'8px' }}>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search exercises…"
+            style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+              borderRadius:'8px', color:'#f1f5f9', fontSize:'13px', padding:'8px 10px',
+              width:'100%', boxSizing:'border-box' }} />
+          <select value={muscleFilter} onChange={e => setMuscleFilter(e.target.value)}
+            style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+              borderRadius:'8px', color:'#f1f5f9', fontSize:'12px', padding:'7px 8px', width:'100%' }}>
+            {uniqueMuscles.map(m => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <div style={{ overflowY:'auto', flex:1 }}>
+            {filtered.length === 0 ? (
+              <div style={{ color:'#475569', fontSize:'12px', padding:'8px 0', textAlign:'center' }}>No exercises found</div>
+            ) : filtered.map(ex => (
+              <button key={ex.ExerciseID} onClick={() => addExercise(ex)}
+                style={{ width:'100%', background:'none', border:'none', padding:'7px 4px',
+                  display:'flex', alignItems:'center', gap:'6px', cursor: day.isRestDay ? 'default' : 'pointer',
+                  borderBottom:'1px solid rgba(255,255,255,0.05)', textAlign:'left',
+                  opacity: day.isRestDay ? 0.35 : 1 }}
+                onMouseEnter={e => { if (!day.isRestDay) e.currentTarget.style.background='rgba(249,115,22,0.08)'; }}
+                onMouseLeave={e => e.currentTarget.style.background='none'}>
+                <span style={{ color:'#f97316', fontSize:'14px', flexShrink:0 }}>+</span>
+                <div>
+                  <div style={{ color:'#e2e8f0', fontSize:'12px', lineHeight:1.3 }}>{ex.Name}</div>
+                  {ex.MuscleGroup && <div style={{ color:'#475569', fontSize:'10px' }}>{ex.MuscleGroup}</div>}
+                </div>
               </button>
             ))}
           </div>
-        )}
-        {/* day tabs */}
-        <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0,
-          paddingBottom:'4px' }}>
-          {days.map((d, i) => (
-            <button key={d.id} onClick={() => setActiveDay(i)}
-              style={{ padding:'5px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
-                whiteSpace:'nowrap', fontSize:'12px', fontWeight: activeDay===i ? 600 : 400,
-                background: activeDay===i ? '#f97316' : 'rgba(255,255,255,0.08)',
-                color: activeDay===i ? '#fff' : '#94a3b8',
-                transition:'all 0.15s', flexShrink:0 }}>
-              {d.dayName || `Day ${i+1}`}
-              {(d.exercises||[]).length > 0 &&
-                <span style={{ marginLeft:'4px', opacity:0.7 }}>({d.exercises.length})</span>}
-            </button>
-          ))}
         </div>
 
-        {/* exercise list */}
-        <div style={{ overflowY:'auto', flex:1 }}>
-          {exercises.length === 0 ? (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', height:'80%', gap:'8px', color:'#475569' }}>
-              <div style={{ fontSize:'28px' }}>💪</div>
-              <div style={{ fontSize:'13px' }}>Search and click exercises on the left to add them here</div>
+        {/* Right: day builder */}
+        <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px', minWidth:0 }}>
+          {phases.length > 1 && (
+            <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0, paddingBottom:'2px' }}>
+              {phases.map((p, i) => (
+                <button key={p.id} onClick={() => { setActivePhase(i); setActiveDay(0); }}
+                  style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                    whiteSpace:'nowrap', fontSize:'11px', fontWeight: activePhase===i ? 600 : 400,
+                    background: activePhase===i ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.06)',
+                    color: activePhase===i ? '#f97316' : '#64748b', transition:'all 0.15s', flexShrink:0 }}>
+                  {p.name || `Phase ${i+1}`}
+                </button>
+              ))}
             </div>
-          ) : exercises.map((ex, i) => (
-            <ExerciseRow key={ex.id} ex={ex} index={i} total={exercises.length}
-              onMove={moveExercise} onUpdate={updateExercise} onRemove={removeExercise}
-              allExercises={allExercises} />
-          ))}
+          )}
+          <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0, paddingBottom:'4px' }}>
+            {days.map((d, i) => (
+              <button key={d.id} onClick={() => setActiveDay(i)}
+                style={{ padding:'5px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                  whiteSpace:'nowrap', fontSize:'12px', fontWeight: activeDay===i ? 600 : 400,
+                  background: d.isRestDay
+                    ? (activeDay===i ? 'rgba(100,116,139,0.25)' : 'rgba(255,255,255,0.03)')
+                    : (activeDay===i ? '#f97316' : 'rgba(255,255,255,0.08)'),
+                  color: d.isRestDay
+                    ? (activeDay===i ? '#64748b' : '#334155')
+                    : (activeDay===i ? '#fff' : '#94a3b8'),
+                  transition:'all 0.15s', flexShrink:0 }}>
+                {d.isRestDay ? '🌙' : (d.dayName || `Day ${i+1}`)}
+                {!d.isRestDay && (d.exercises||[]).length > 0 &&
+                  <span style={{ marginLeft:'4px', opacity:0.7 }}>({d.exercises.length})</span>}
+              </button>
+            ))}
+          </div>
+
+          {day.isRestDay ? (
+            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center',
+              justifyContent:'center', gap:'8px' }}>
+              <div style={{ fontSize:'32px' }}>🌙</div>
+              <div style={{ fontSize:'14px', color:'#64748b', fontWeight:500 }}>Rest Day</div>
+              <div style={{ fontSize:'12px', color:'#475569' }}>No exercises — recovery only</div>
+            </div>
+          ) : (
+            <>
+              {lastDeleted && (
+                <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between',
+                  background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.25)',
+                  borderRadius:'8px', padding:'7px 12px' }}>
+                  <span style={{ color:'#94a3b8', fontSize:'12px' }}>
+                    Deleted <strong style={{color:'#f1f5f9'}}>{lastDeleted.ex.name}</strong>
+                  </span>
+                  <button onClick={undoRemove}
+                    style={{ background:'#f97316', border:'none', borderRadius:'6px',
+                      color:'#fff', fontSize:'12px', fontWeight:600, cursor:'pointer', padding:'4px 10px' }}>
+                    ↩ Undo
+                  </button>
+                </div>
+              )}
+              <div style={{ overflowY:'auto', flex:1 }}>
+                {exercises.length === 0 ? (
+                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
+                    justifyContent:'center', height:'80%', gap:'8px', color:'#475569' }}>
+                    <div style={{ fontSize:'28px' }}>💪</div>
+                    <div style={{ fontSize:'13px' }}>Search and click exercises on the left to add them here</div>
+                  </div>
+                ) : exercises.map((ex, i) => (
+                  <ExerciseRow key={ex.id} ex={ex} index={i} total={exercises.length}
+                    onMove={moveExercise} onUpdate={updateExercise} onRemove={removeExercise}
+                    allExercises={allExercises} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -1140,6 +1256,7 @@ const STEP_LABELS = ['Details', 'Phases', 'Day Names', 'Exercises'];
 
 const defaultProgramData = () => ({
   name: '', description: '', goal: 'Muscle Gain', daysPerWeek: 4,
+  numPhases: 3,
   level: 'Intermediate', equipment: [], focusAreas: [],
   sessionDuration: 60, trainingType: 'Hypertrophy',
 });
@@ -1165,16 +1282,18 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
     trainingType: initial.trainingType || 'Hypertrophy',
   } : defaultProgramData());
   const [phases, setPhases]   = useState(() =>
-    initial ? parsePhasesFromProgram(initial) : initPhases(1, 4)
+    initial ? parsePhasesFromProgram(initial) : initPhases(3, 4)
   );
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
 
   const updateData = (field, val) => {
     setData(d => ({ ...d, [field]: val }));
-    // When daysPerWeek changes, sync phases
     if (field === 'daysPerWeek') {
       setPhases(ps => ps.map(p => ({ ...p, days: initDays(val, p.days) })));
+    }
+    if (field === 'numPhases') {
+      setPhases(ps => initPhases(val, ps[0]?.days?.filter(d => !d.isRestDay).length || 4, ps));
     }
   };
 
@@ -1362,7 +1481,7 @@ export default function ProgramLibraryPage() {
 
   // Save program (create or edit)
   const handleSaveProgram = async ({ id, name, description, goal, daysPerWeek,
-    durationWeeks, level, equipment, focusAreas, days, sessionDuration, trainingType }) => {
+    durationWeeks, level, equipment, focusAreas, days, phases, sessionDuration, trainingType }) => {
     const programId = id || generateId('prog');
     const rowData = {
       ProgramID: programId, Name: name, Description: description,
