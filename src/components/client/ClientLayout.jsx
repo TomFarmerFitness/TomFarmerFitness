@@ -72,7 +72,9 @@ export default function ClientLayout() {
           .nav-icon svg { width: 18px !important; height: 18px !important; }
         }
       `}</style>
-      <div style={{ minHeight: '100dvh', background: '#070c14', overflow: 'hidden', width: '100vw', maxWidth: '100vw', position: 'relative' }}>
+      {/* NOTE: No overflow:hidden or position:relative here — those clip position:fixed
+           modals and block touch events on iOS Safari. The inner clip div handles scroll. */}
+      <div style={{ minHeight: '100dvh', background: '#070c14', width: '100vw', maxWidth: '100vw' }}>
 
         {/* Fixed Header */}
         <header style={{

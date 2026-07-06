@@ -34,7 +34,13 @@ export function AuthProvider({ children }) {
       if (raw) {
         const session = JSON.parse(raw);
         if (isSessionValid(session)) {
-          setUser(session);
+          // Refresh timestamp on every restore so the 365-day window
+          // extends from last app open rather than original login date.
+          // This keeps the user permanently logged in as long as they
+          // open the app at least once a year.
+          const refreshed = { ...session, loggedInAt: new Date().toISOString() };
+          localStorage.setItem(SESSION_KEY, JSON.stringify(refreshed));
+          setUser(refreshed);
         } else {
           localStorage.removeItem(SESSION_KEY);
         }

@@ -833,7 +833,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
         ref={overlayRef}
         onClick={e => { if (e.target === overlayRef.current) closeWithAnimation(onClose); }}
         style={{
-          position: 'fixed', inset: 0, zIndex: 200,
+          position: 'fixed', inset: 0, zIndex: 300,
           background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
         }}
