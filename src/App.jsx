@@ -22,7 +22,6 @@ const TodayPage     = lazy(() => import('./pages/client/TodayPage'));
 const TrainingPage  = lazy(() => import('./pages/client/TrainingPage'));
 const NutritionPage = lazy(() => import('./pages/client/NutritionPage'));
 const ProgressPage  = lazy(() => import('./pages/client/ProgressPage'));
-const AskPage       = lazy(() => import('./pages/client/AskPage'));
 
 // ─── Suspense fallback ────────────────────────────────────────────────────────
 function PageLoader() {
@@ -119,7 +118,6 @@ export default function App() {
             <Route path="training"   element={<TrainingPage />} />
             <Route path="nutrition"  element={<NutritionPage />} />
             <Route path="progress"   element={<ProgressPage />} />
-            <Route path="ask"        element={<AskPage />} />
           </Route>
 
           {/* Root fallback */}
