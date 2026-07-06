@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { readSheet, appendToSheet, lookupFood } from '../../utils/sheets';
 import { useAuth } from '../../context/AuthContext';
+import { BrowserMultiFormatReader } from '@zxing/library';
+
+// One shared ZXing reader instance — handles EAN-13, UPC-A, Code-128, QR and more
+const _zxingReader = new BrowserMultiFormatReader();
 
 // ── Recent Foods (localStorage) ──────────────────────────────────────────────
 const RECENT_FOODS_KEY = 'tff_recent_foods';
@@ -444,8 +448,9 @@ function BarcodeScanner({ onResult, onClose }) {
     } catch { if (activeRef.current) { setNotFound(true); setLooking(false); } }
   }
 
-  // Capture a canvas frame and decode — works reliably on iOS Safari
-  async function captureFrame() {
+  // Capture a canvas frame and decode using ZXing — works on iOS Safari
+  // ZXing reads pixels directly from the canvas (no BarcodeDetector API needed)
+  function captureFrame() {
     const video  = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas || video.readyState < 2) return null;
@@ -453,14 +458,10 @@ function BarcodeScanner({ onResult, onClose }) {
     canvas.height = video.videoHeight || 480;
     canvas.getContext('2d').drawImage(video, 0, 0);
     try {
-      const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
-      const bmp  = await createImageBitmap(blob);
-      const detector = new window.BarcodeDetector({ formats: ['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','itf'] });
-      const results = await detector.detect(bmp);
-      bmp.close();
-      if (results.length > 0) return results[0].rawValue;
-    } catch {}
-    return null;
+      return _zxingReader.decodeFromCanvas(canvas).getText();
+    } catch {
+      return null; // NotFoundException — no barcode visible yet, normal between frames
+    }
   }
 
   // Called directly from a button tap — satisfies iOS PWA user-gesture requirement
@@ -481,23 +482,18 @@ function BarcodeScanner({ onResult, onClose }) {
         };
       }
 
-      if ('BarcodeDetector' in window) {
-        updatePhase('live');
-        setMessage('Hold barcode steady in frame…');
-        intervalRef.current = setInterval(async () => {
-          if (!activeRef.current || phaseRef.current === 'found') return;
-          const code = await captureFrame();
-          if (code) {
-            clearInterval(intervalRef.current);
-            updatePhase('found');
-            setMessage('✓ Barcode detected!');
-            await lookupBarcode(code);
-          }
-        }, 400);
-      } else {
-        updatePhase('live');
-        setMessage('Point camera at barcode, then tap Scan');
-      }
+      updatePhase('live');
+      setMessage('Hold barcode steady in frame…');
+      intervalRef.current = setInterval(() => {
+        if (!activeRef.current || phaseRef.current === 'found') return;
+        const code = captureFrame();
+        if (code) {
+          clearInterval(intervalRef.current);
+          updatePhase('found');
+          setMessage('✓ Barcode detected!');
+          lookupBarcode(code);
+        }
+      }, 300);
     } catch (err) {
       if (!activeRef.current) return;
       if (err.name === 'NotAllowedError') {
@@ -612,18 +608,6 @@ function BarcodeScanner({ onResult, onClose }) {
           </div>
         )}
 
-        {/* Manual scan button — shown when BarcodeDetector unavailable but camera is live */}
-        {phase === 'live' && !('BarcodeDetector' in window) && (
-          <button onClick={async () => {
-            const code = await captureFrame();
-            if (code) { updatePhase('found'); setMessage('✓ Barcode detected!'); await lookupBarcode(code); }
-          }} style={{
-            marginTop: 12, padding: '11px 28px',
-            background: '#f97316', border: 'none', borderRadius: 10,
-            color: '#fff', fontSize: 14, fontWeight: 700, cursor: 'pointer',
-            width: '100%',
-          }}>📸 Scan Barcode</button>
-        )}
 
         {/* Status message */}
         <div style={{
