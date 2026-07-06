@@ -1658,4 +1658,39 @@ export default function NutritionPage() {
             <button
               onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
               style={{
-                width: '100%
+                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
+                cursor: 'pointer',
+              }}
+            >
+              + Add Food
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── WEEKLY VIEW ── */}
+      {activeTab === 'weekly' && (
+        <WeeklyView nutritionRows={nutritionRows} targets={targets} />
+      )}
+
+      {/* ── AddFoodModal ── */}
+      {showAddFood && (
+        <AddFoodModal
+          initialMealType={addFoodMeal}
+          clientTargets={targets}
+          onSave={handleSaveFood}
+          onClose={() => setShowAddFood(false)}
+        />
+      )}
+
+      {/* ── Micronutrients panel ── */}
+      {showMicros && (
+        <MicronutrientsPanel
+          nutritionRows={dayRows}
+          onClose={() => setShowMicros(false)}
+        />
+      )}
+    </div>
+  );
+}
