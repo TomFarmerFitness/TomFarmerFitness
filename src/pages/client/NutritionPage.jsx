@@ -687,7 +687,7 @@ function scaleNutrition(food, grams) {
   };
 }
 
-function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
+function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMealType = false }) {
   const overlayRef = useRef(null);
   const sheetRef   = useRef(null);
 
@@ -799,7 +799,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
     }
     onSave({
       foodName: selected.foodName,
-      mealType,
+      ...(hideMealType ? {} : { mealType }),
       servingG,
       ...scaled,
       micronutrients,
@@ -811,7 +811,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
     if (!manualFood.name || !manualFood.calories) return;
     onSave({
       foodName: manualFood.name,
-      mealType,
+      ...(hideMealType ? {} : { mealType }),
       servingG:  100,
       calories:  parseFloat(manualFood.calories) || 0,
       protein:   parseFloat(manualFood.protein)  || 0,
@@ -898,25 +898,27 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose }) {
 
           <div style={{ padding: '8px 16px 16px', flex: 1, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' }}>
 
-            {/* ── Meal type selector (always visible) ── */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-              {MEAL_TYPES.map(mt => (
-                <button
-                  key={mt.key}
-                  onClick={() => setMealType(mt.key)}
-                  style={{
-                    flex: 1, minWidth: 60,
-                    padding: '7px 4px', borderRadius: 10, border: 'none',
-                    cursor: 'pointer', fontSize: 13, fontWeight: 500,
-                    background: mealType === mt.key ? '#22c55e' : 'var(--surface-secondary, #1a1a1a)',
-                    color: mealType === mt.key ? '#000' : 'var(--text-secondary)',
-                    transition: 'background 0.15s, color 0.15s',
-                  }}
-                >
-                  {mt.emoji} {mt.label}
-                </button>
-              ))}
-            </div>
+            {/* ── Meal type selector (hidden when building a saved meal) ── */}
+            {!hideMealType && (
+              <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+                {MEAL_TYPES.map(mt => (
+                  <button
+                    key={mt.key}
+                    onClick={() => setMealType(mt.key)}
+                    style={{
+                      flex: 1, minWidth: 60,
+                      padding: '7px 4px', borderRadius: 10, border: 'none',
+                      cursor: 'pointer', fontSize: 13, fontWeight: 500,
+                      background: mealType === mt.key ? '#22c55e' : 'var(--surface-secondary, #1a1a1a)',
+                      color: mealType === mt.key ? '#000' : 'var(--text-secondary)',
+                      transition: 'background 0.15s, color 0.15s',
+                    }}
+                  >
+                    {mt.emoji} {mt.label}
+                  </button>
+                ))}
+              </div>
+            )}
 
             {/* ── MANUAL MODE ── */}
             {manualMode ? (
@@ -1417,13 +1419,19 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
 }
 
 // ─── SavedMealsModal ─────────────────────────────────────────────────────────
+// Views: 'list' → 'builder' → 'logPicker'
 
-function SavedMealsModal({ dayRows, clientId, onLogMeal, onClose }) {
+function SavedMealsModal({ clientId, onLogMeal, onClose }) {
   const [meals,        setMeals]        = useState(() => getSavedMeals(clientId));
-  const [showSaveForm, setShowSaveForm] = useState(false);
-  const [savingName,   setSavingName]   = useState('');
-  const [loggingId,    setLoggingId]    = useState(null);
-  const [savedFlash,   setSavedFlash]   = useState(false);
+  const [view,         setView]         = useState('list');
+
+  // Builder
+  const [builderName,  setBuilderName]  = useState('');
+  const [builderFoods, setBuilderFoods] = useState([]);
+  const [showFoodAdd,  setShowFoodAdd]  = useState(false);
+
+  // Log picker
+  const [logTarget,    setLogTarget]    = useState(null);
 
   // Body scroll lock
   useEffect(() => {
@@ -1439,175 +1447,167 @@ function SavedMealsModal({ dayRows, clientId, onLogMeal, onClose }) {
     };
   }, []);
 
-  function handleSaveMeal() {
-    if (!savingName.trim() || dayRows.length === 0) return;
-    const foods = dayRows.map(r => ({
-      foodName: r.foodName, servingG: r.servingG,
-      calories: r.calories, protein: r.protein, carbs: r.carbs,
-      fats: r.fats, fibre: r.fibre || 0, mealType: r.mealType,
-    }));
-    const meal = { id: `meal-${Date.now()}`, name: savingName.trim(),
-      createdAt: new Date().toISOString(), foods };
-    const updated = [meal, ...meals];
-    setMeals(updated);
-    setSavedMeals(clientId, updated);
-    setSavingName(''); setShowSaveForm(false);
-    setSavedFlash(true); setTimeout(() => setSavedFlash(false), 2500);
+  function startBuilder() {
+    setBuilderName(''); setBuilderFoods([]); setView('builder');
   }
 
-  function handleDeleteMeal(id) {
+  function saveMeal() {
+    if (!builderName.trim() || builderFoods.length === 0) return;
+    const meal = { id: `meal-${Date.now()}`, name: builderName.trim(), createdAt: new Date().toISOString(), foods: builderFoods };
+    const updated = [meal, ...meals];
+    setMeals(updated); setSavedMeals(clientId, updated);
+    setView('list');
+  }
+
+  function deleteMeal(id) {
     const updated = meals.filter(m => m.id !== id);
     setMeals(updated); setSavedMeals(clientId, updated);
   }
 
-  async function handleLogMeal(meal) {
-    setLoggingId(meal.id);
+  async function logMeal(meal, mealType) {
     for (let i = 0; i < meal.foods.length; i++) {
-      await onLogMeal({ ...meal.foods[i], micronutrients: null });
+      await onLogMeal({ ...meal.foods[i], mealType });
       if (i < meal.foods.length - 1) await new Promise(r => setTimeout(r, 15));
     }
-    setLoggingId(null);
     onClose();
   }
 
-  const content = (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000,
-      display: 'flex', flexDirection: 'column', background: 'var(--bg, #0a0a0a)' }}>
+  const builderTotals = builderFoods.reduce(
+    (acc, f) => ({ calories: acc.calories + (f.calories||0), protein: acc.protein + (f.protein||0), carbs: acc.carbs + (f.carbs||0), fats: acc.fats + (f.fats||0) }),
+    { calories: 0, protein: 0, carbs: 0, fats: 0 }
+  );
 
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '16px 16px 12px', borderBottom: '1px solid var(--border, #2a2a2a)' }}>
-        <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>🍽️ My Meals</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
-          color: 'var(--text-secondary)', fontSize: 22, lineHeight: 1, padding: '2px 6px' }}>✕</button>
+  const closeBtn = (
+    <button onClick={onClose} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-secondary)', fontSize:22, lineHeight:1, padding:'2px 6px' }}>✕</button>
+  );
+  const backBtn = (dest) => (
+    <button onClick={() => setView(dest)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-secondary)', fontSize:20, padding:'0 8px 0 0' }}>←</button>
+  );
+  const headerStyle = { display:'flex', alignItems:'center', justifyContent:'space-between', padding:'16px 16px 12px', borderBottom:'1px solid var(--border, #2a2a2a)', flexShrink:0 };
+
+  // ── LIST VIEW ──────────────────────────────────────────────────────────
+  const listView = (
+    <>
+      <div style={headerStyle}>
+        <span style={{ fontSize:17, fontWeight:700, color:'var(--text-primary)' }}>🍽️ My Meals</span>
+        {closeBtn}
       </div>
-
-      {/* Body */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
-
-        {/* Save today's foods */}
-        {dayRows.length > 0 && (
-          <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
-            borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
-            {!showSaveForm ? (
-              <button onClick={() => setShowSaveForm(true)} style={{ width: '100%', background: 'none',
-                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
-                color: '#22c55e', fontSize: 14, fontWeight: 600 }}>
-                <span style={{ fontSize: 18 }}>💾</span>
-                Save today's {dayRows.length} food{dayRows.length !== 1 ? 's' : ''} as a meal
-              </button>
-            ) : (
-              <div>
-                <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 600, marginBottom: 8 }}>Meal name</div>
-                <input
-                  autoFocus
-                  value={savingName}
-                  onChange={e => setSavingName(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter') handleSaveMeal();
-                    if (e.key === 'Escape') { setShowSaveForm(false); setSavingName(''); }
-                  }}
-                  placeholder="e.g. Post-Workout Shake"
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: 10, boxSizing: 'border-box',
-                    background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(34,197,94,0.4)',
-                    color: 'var(--text-primary)', fontSize: 14, outline: 'none', marginBottom: 8 }}
-                />
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={handleSaveMeal} disabled={!savingName.trim()} style={{
-                    flex: 1, padding: '9px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: savingName.trim() ? '#22c55e' : '#333',
-                    color: savingName.trim() ? '#000' : '#666', fontSize: 13, fontWeight: 700 }}>Save</button>
-                  <button onClick={() => { setShowSaveForm(false); setSavingName(''); }} style={{
-                    flex: 1, padding: '9px', borderRadius: 10, border: '1px solid #333',
-                    background: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {savedFlash && (
-          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 12,
-            background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)',
-            color: '#22c55e', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
-            ✓ Meal saved!
-          </div>
-        )}
-
-        {/* Meal list */}
+      <div style={{ padding:'12px 16px 8px', flexShrink:0 }}>
+        <button onClick={startBuilder} style={{ width:'100%', padding:'14px', borderRadius:12, border:'none', background:'#22c55e', color:'#000', fontSize:15, fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8 }}>
+          <span style={{ fontSize:20 }}>+</span> Add New Meal
+        </button>
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:'4px 16px 16px' }}>
         {meals.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}>
-            <div style={{ fontSize: 40, marginBottom: 12 }}>🍽️</div>
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
-              No saved meals yet
+          <div style={{ textAlign:'center', padding:'48px 20px', color:'var(--text-secondary)' }}>
+            <div style={{ fontSize:48, marginBottom:12 }}>🍽️</div>
+            <div style={{ fontSize:15, fontWeight:600, marginBottom:6, color:'var(--text-primary)' }}>No saved meals yet</div>
+            <div style={{ fontSize:13 }}>Tap "Add New Meal" to build your first one.</div>
+          </div>
+        ) : meals.map(meal => {
+          const t = meal.foods.reduce((a, f) => ({ cal: a.cal+(f.calories||0), p: a.p+(f.protein||0), c: a.c+(f.carbs||0), fa: a.fa+(f.fats||0) }), { cal:0, p:0, c:0, fa:0 });
+          return (
+            <div key={meal.id} style={{ background:'var(--surface, #111)', border:'1px solid var(--border, #2a2a2a)', borderRadius:14, padding:'14px', marginBottom:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:6 }}>
+                <div style={{ fontSize:15, fontWeight:700, color:'var(--text-primary)' }}>{meal.name}</div>
+                <button onClick={() => deleteMeal(meal.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-tertiary, #555)', fontSize:16, padding:'0 2px' }}>🗑</button>
+              </div>
+              <div style={{ display:'flex', gap:10, marginBottom:10, flexWrap:'wrap' }}>
+                {[{l:'kcal',v:Math.round(t.cal),c:'#f97316'},{l:'P',v:Math.round(t.p)+'g',c:'#3b82f6'},{l:'C',v:Math.round(t.c)+'g',c:'#22c55e'},{l:'F',v:Math.round(t.fa)+'g',c:'#f59e0b'}].map(({l,v,c})=>(
+                  <span key={l} style={{ fontSize:12, color:c, fontWeight:600 }}>{v} {l}</span>
+                ))}
+                <span style={{ fontSize:12, color:'var(--text-tertiary, #555)' }}>· {meal.foods.length} item{meal.foods.length!==1?'s':''}</span>
+              </div>
+              <button onClick={() => { setLogTarget(meal); setView('logPicker'); }} style={{ width:'100%', padding:'10px', borderRadius:10, border:'none', background:'rgba(249,115,22,0.15)', color:'#f97316', fontSize:14, fontWeight:700, cursor:'pointer' }}>
+                Log This Meal →
+              </button>
             </div>
-            <div style={{ fontSize: 13 }}>
-              Log some foods, then tap "Save today's foods as a meal" to create your first one.
+          );
+        })}
+      </div>
+    </>
+  );
+
+  // ── BUILDER VIEW ───────────────────────────────────────────────────────
+  const builderView = (
+    <>
+      <div style={headerStyle}>
+        <div style={{ display:'flex', alignItems:'center' }}>{backBtn('list')}<span style={{ fontSize:17, fontWeight:700, color:'var(--text-primary)' }}>New Meal</span></div>
+        {closeBtn}
+      </div>
+      <div style={{ flex:1, overflowY:'auto', padding:'12px 16px 16px' }}>
+        <input autoFocus value={builderName} onChange={e=>setBuilderName(e.target.value)} placeholder="Meal name  (e.g. Post-Workout Shake)"
+          style={{ width:'100%', boxSizing:'border-box', padding:'13px 14px', borderRadius:12, marginBottom:14, background:'var(--surface-secondary, #1a1a1a)', border:'1px solid var(--border, #333)', color:'var(--text-primary)', fontSize:15, outline:'none' }} />
+
+        {builderFoods.length > 0 && (
+          <div style={{ marginBottom:12 }}>
+            {builderFoods.map((f,i) => (
+              <div key={i} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 12px', borderRadius:10, marginBottom:6, background:'var(--surface, #111)', border:'1px solid var(--border, #2a2a2a)' }}>
+                <div>
+                  <div style={{ fontSize:14, fontWeight:600, color:'var(--text-primary)' }}>{f.foodName}</div>
+                  <div style={{ fontSize:12, color:'var(--text-secondary)' }}>{f.servingG}g · {Math.round(f.calories)} kcal · P {Math.round(f.protein)}g · C {Math.round(f.carbs)}g · F {Math.round(f.fats)}g</div>
+                </div>
+                <button onClick={() => setBuilderFoods(prev=>prev.filter((_,idx)=>idx!==i))} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text-tertiary, #555)', fontSize:18, padding:'0 4px', flexShrink:0 }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display:'flex', gap:12, padding:'10px 12px', borderRadius:10, background:'rgba(249,115,22,0.08)', border:'1px solid rgba(249,115,22,0.2)', marginBottom:12, flexWrap:'wrap' }}>
+              {[{label:'Total kcal',val:Math.round(builderTotals.calories),color:'#f97316'},{label:'Protein',val:Math.round(builderTotals.protein)+'g',color:'#3b82f6'},{label:'Carbs',val:Math.round(builderTotals.carbs)+'g',color:'#22c55e'},{label:'Fats',val:Math.round(builderTotals.fats)+'g',color:'#f59e0b'}].map(({label,val,color})=>(
+                <div key={label} style={{ textAlign:'center' }}>
+                  <div style={{ fontSize:14, fontWeight:700, color }}>{val}</div>
+                  <div style={{ fontSize:10, color:'var(--text-secondary)', textTransform:'uppercase' }}>{label}</div>
+                </div>
+              ))}
             </div>
           </div>
-        ) : (
-          meals.map(meal => {
-            const totalCals  = meal.foods.reduce((s, f) => s + (f.calories || 0), 0);
-            const totalPro   = meal.foods.reduce((s, f) => s + (f.protein  || 0), 0);
-            const totalCarbs = meal.foods.reduce((s, f) => s + (f.carbs    || 0), 0);
-            const totalFats  = meal.foods.reduce((s, f) => s + (f.fats     || 0), 0);
-            const isLogging  = loggingId === meal.id;
-            return (
-              <div key={meal.id} style={{ background: 'var(--surface, #111)',
-                border: '1px solid var(--border, #2a2a2a)', borderRadius: 14,
-                padding: '14px', marginBottom: 10 }}>
-                {/* Name + delete */}
-                <div style={{ display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'flex-start', marginBottom: 8 }}>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{meal.name}</div>
-                  <button onClick={() => handleDeleteMeal(meal.id)} style={{ background: 'none',
-                    border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 15,
-                    padding: '0 0 0 8px', lineHeight: 1 }}>🗑</button>
-                </div>
-                {/* Food preview */}
-                <div style={{ marginBottom: 10 }}>
-                  {meal.foods.slice(0, 3).map((f, i) => (
-                    <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 2 }}>
-                      • {f.foodName} ({Math.round(f.calories)} cal)
-                    </div>
-                  ))}
-                  {meal.foods.length > 3 && (
-                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
-                      +{meal.foods.length - 3} more items
-                    </div>
-                  )}
-                </div>
-                {/* Macro chips */}
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-                  {[
-                    { label: `${Math.round(totalCals)} cal`, color: '#e2e8f0' },
-                    { label: `${Math.round(totalPro)}g P`,   color: '#3b82f6' },
-                    { label: `${Math.round(totalCarbs)}g C`, color: '#f59e0b' },
-                    { label: `${Math.round(totalFats)}g F`,  color: '#f97316' },
-                  ].map(({ label, color }) => (
-                    <span key={label} style={{ fontSize: 11, fontWeight: 600, color,
-                      background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: 6 }}>
-                      {label}
-                    </span>
-                  ))}
-                </div>
-                {/* Log button */}
-                <button onClick={() => handleLogMeal(meal)} disabled={isLogging} style={{
-                  width: '100%', padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
-                  background: isLogging ? '#1a3a1a' : '#22c55e',
-                  color: isLogging ? '#22c55e' : '#000', fontSize: 13, fontWeight: 700 }}>
-                  {isLogging ? '⏳ Logging…' : `Log This Meal (${meal.foods.length} item${meal.foods.length !== 1 ? 's' : ''})`}
-                </button>
-              </div>
-            );
-          })
         )}
+
+        <button onClick={() => setShowFoodAdd(true)} style={{ width:'100%', padding:'13px', borderRadius:12, border:'1.5px dashed var(--border, #333)', background:'none', color:'#22c55e', fontSize:15, fontWeight:600, cursor:'pointer', marginBottom:14 }}>
+          + Add Food
+        </button>
+        <button onClick={saveMeal} disabled={!builderName.trim()||builderFoods.length===0}
+          style={{ width:'100%', padding:'14px', borderRadius:12, border:'none', background:(builderName.trim()&&builderFoods.length>0)?'#f97316':'#333', color:(builderName.trim()&&builderFoods.length>0)?'#fff':'#666', fontSize:15, fontWeight:700, cursor:(builderName.trim()&&builderFoods.length>0)?'pointer':'default' }}>
+          Save Meal
+        </button>
       </div>
+    </>
+  );
+
+  // ── LOG PICKER VIEW ────────────────────────────────────────────────────
+  const logPickerView = logTarget && (
+    <>
+      <div style={headerStyle}>
+        <div style={{ display:'flex', alignItems:'center' }}>{backBtn('list')}<span style={{ fontSize:17, fontWeight:700, color:'var(--text-primary)' }}>Add to…</span></div>
+        {closeBtn}
+      </div>
+      <div style={{ flex:1, display:'flex', flexDirection:'column', padding:'20px 16px', gap:12 }}>
+        <div style={{ fontSize:14, color:'var(--text-secondary)', marginBottom:4, textAlign:'center' }}>
+          Where would you like to log <strong style={{ color:'var(--text-primary)' }}>{logTarget.name}</strong>?
+        </div>
+        {MEAL_TYPES.map(mt => (
+          <button key={mt.key} onClick={() => logMeal(logTarget, mt.key)} style={{ width:'100%', padding:'16px', borderRadius:14, border:'1px solid var(--border, #2a2a2a)', background:'var(--surface, #111)', color:'var(--text-primary)', fontSize:16, fontWeight:600, cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+            <span style={{ fontSize:24 }}>{mt.emoji}</span>{mt.label}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
+  const content = (
+    <div style={{ position:'fixed', inset:0, zIndex:1000, display:'flex', flexDirection:'column', background:'var(--bg, #0a0a0a)' }}>
+      {view === 'list'      && listView}
+      {view === 'builder'   && builderView}
+      {view === 'logPicker' && logPickerView}
+      {showFoodAdd && (
+        <AddFoodModal
+          hideMealType={true}
+          onSave={food => { setBuilderFoods(prev => [...prev, food]); setShowFoodAdd(false); }}
+          onClose={() => setShowFoodAdd(false)}
+        />
+      )}
     </div>
   );
 
-  const root = document.getElementById('modal-root') || document.body;
-  return createPortal(content, root);
+  return createPortal(content, document.getElementById('modal-root') || document.body);
 }
 
 // ─── NutritionPage (main) ──────────────────────────────────────────────────
@@ -1905,12 +1905,10 @@ export default function NutritionPage() {
           nutritionRows={dayRows}
           onClose={() => setShowMicros(false)}
         />
-      )}
 
       {/* ── Saved Meals modal ── */}
       {showSavedMeals && (
         <SavedMealsModal
-          dayRows={dayRows}
           clientId={user.clientID}
           onLogMeal={handleSaveFood}
           onClose={() => setShowSavedMeals(false)}
