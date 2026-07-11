@@ -186,6 +186,31 @@ function computeProgression(exercises, completedSets) {
   return updates;
 }
 
+// ─── Previous weight lookup ───────────────────────────────────────────────────
+// Scans WorkoutLogs (most recent first) and returns the last recorded weight
+// for a given exercise name, or '' if never logged.
+function getPrevWeight(exerciseName, workoutLogs) {
+  const name = (exerciseName || '').toLowerCase().trim();
+  const sorted = [...workoutLogs]
+    .filter(l => l.Status === 'Completed')
+    .sort((a, b) => new Date(b.LoggedAt || b.Date || 0) - new Date(a.LoggedAt || a.Date || 0));
+
+  for (const log of sorted) {
+    try {
+      const exs = JSON.parse(log.ExercisesCompleted || '[]');
+      const match = exs.find(e => (e.name || '').toLowerCase().trim() === name);
+      if (match && Array.isArray(match.sets)) {
+        // Prefer a completed set with a positive weight
+        const done = match.sets.filter(s => s.done && parseFloat(s.weight) > 0);
+        if (done.length > 0) return done[done.length - 1].weight; // last completed set
+        const any = match.sets.filter(s => parseFloat(s.weight) > 0);
+        if (any.length > 0) return any[0].weight;
+      }
+    } catch {}
+  }
+  return '';
+}
+
 // ─── ProgramRoadmap ───────────────────────────────────────────────────────────
 function ProgramRoadmap({ phases, workoutLogs, programId, currentPhaseIdx, currentWeek }) {
   if (!phases || phases.length === 0) return null;
@@ -1898,11 +1923,23 @@ export default function TrainingPage() {
   const weekStats        = computeWeekStats(workoutLogs, weekDays);
   const scheduledThisWeek= weekDays.filter((_,i)=>!!getSessionForDay(sessions,i,daysPerWeek,trainingDays)).length;
 
-  // Init active sets from exercises
-  const initActiveSets = (exs) => {
+  // Init active sets from exercises.
+  // logs: the client's WorkoutLogs array (for previous-weight pre-fill).
+  // weightMultiplier: 1.0 normally; 0.9 in recovery mode (rounds to nearest 2.5 kg).
+  const initActiveSets = (exs, logs = [], weightMultiplier = 1) => {
     const s = {};
-    exs.forEach(ex=>{
-      s[ex.name] = Array.from({length:ex.sets},()=>({reps:String(ex.reps||''),weight:String(ex.weight||''),done:false}));
+    exs.forEach(ex => {
+      const prev = getPrevWeight(ex.name, logs);
+      let fillWeight = ex.weight ? String(ex.weight) : prev;
+      if (fillWeight && weightMultiplier !== 1) {
+        const raw = parseFloat(fillWeight) * weightMultiplier;
+        fillWeight = String(Math.round(raw / 2.5) * 2.5 || fillWeight);
+      }
+      s[ex.name] = Array.from({ length: ex.sets }, () => ({
+        reps: String(ex.reps || ''),
+        weight: fillWeight,
+        done: false,
+      }));
     });
     return s;
   };
@@ -1962,7 +1999,9 @@ export default function TrainingPage() {
 
     setAdjustments(adjs);
     setActiveExercises(exs);
-    setActiveSets(initActiveSets(exs));
+    // Pre-fill weights from last session; in recovery mode reduce by 10% (rounded to nearest 2.5 kg)
+    const isRecovery = adjs.some(a => a.type === 'recovery');
+    setActiveSets(initActiveSets(exs, workoutLogs, isRecovery ? 0.9 : 1));
     setView('active');
   };
 
