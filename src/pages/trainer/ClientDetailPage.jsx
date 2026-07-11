@@ -1159,9 +1159,16 @@ export default function ClientDetailPage() {
                   pauseUntil.setDate(pauseUntil.getDate() + 10);
                   const pauseUntilISO = pauseUntil.toISOString().slice(0,10);
 
-                  // Build updated client row
+                  // Build updated client row — write to both column-name conventions
+                  // so the client app (DailyCalories/ProteinTarget/CarbTarget/FatTarget)
+                  // and trainer display (TargetCalories/TargetProtein/TargetCarbs/TargetFats)
+                  // both see the updated values.
                   const updatedClient = {
                     ...Object.fromEntries(Object.entries(client)),
+                    DailyCalories:  overrideForm.calories,
+                    ProteinTarget:  overrideForm.protein,
+                    CarbTarget:     overrideForm.carbs,
+                    FatTarget:      overrideForm.fats,
                     TargetCalories: overrideForm.calories,
                     TargetProtein:  overrideForm.protein,
                     TargetCarbs:    overrideForm.carbs,
@@ -1178,10 +1185,10 @@ export default function ClientDetailPage() {
                     ClientID: client.ClientID,
                     AdjustedAt: today,
                     Goal: client.Goal,
-                    OldCalories: client.TargetCalories || '',
-                    OldProtein:  client.TargetProtein  || '',
-                    OldCarbs:    client.TargetCarbs    || '',
-                    OldFats:     client.TargetFats     || '',
+                    OldCalories: client.DailyCalories || client.TargetCalories || '',
+                    OldProtein:  client.ProteinTarget || client.TargetProtein  || '',
+                    OldCarbs:    client.CarbTarget    || client.TargetCarbs    || '',
+                    OldFats:     client.FatTarget     || client.TargetFats     || '',
                     NewCalories: overrideForm.calories,
                     NewProtein:  overrideForm.protein,
                     NewCarbs:    overrideForm.carbs,
@@ -1195,8 +1202,10 @@ export default function ClientDetailPage() {
                   setMacroHistory(prev => [{
                     AdjustmentID: `adj-manual-${Date.now()}`,
                     ClientID: client.ClientID, AdjustedAt: today, Goal: client.Goal,
-                    OldCalories: client.TargetCalories, OldProtein: client.TargetProtein,
-                    OldCarbs: client.TargetCarbs, OldFats: client.TargetFats,
+                    OldCalories: client.DailyCalories || client.TargetCalories,
+                    OldProtein:  client.ProteinTarget || client.TargetProtein,
+                    OldCarbs:    client.CarbTarget    || client.TargetCarbs,
+                    OldFats:     client.FatTarget     || client.TargetFats,
                     NewCalories: overrideForm.calories, NewProtein: overrideForm.protein,
                     NewCarbs: overrideForm.carbs, NewFats: overrideForm.fats,
                     Reason: `Manual override by trainer. Auto-adjust paused until ${pauseUntilISO}.`,
@@ -1253,26 +1262,4 @@ export default function ClientDetailPage() {
               );
             })()}
 
-            <TrainerWeightChart entries={weightEntries} targetWeight={client.TargetWeight} />
-          </div>
-
-          {/* Progress photos */}
-          <div style={cardStyle}>
-            <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 16px' }}>
-              Progress Photos
-              <span style={{ fontWeight: '400', color: '#475569', fontSize: '12px', marginLeft: '8px' }}>
-                {photos.length} {photos.length === 1 ? 'photo' : 'photos'}
-              </span>
-            </h3>
-            <TrainerPhotoGallery photos={photos} onViewPhoto={setViewingPhoto} />
-          </div>
-        </>
-      )}
-
-      {/* Photo lightbox */}
-      {viewingPhoto && (
-        <TrainerPhotoViewer photo={viewingPhoto} onClose={() => setViewingPhoto(null)} />
-      )}
-    </>
-  );
-}
+            <TrainerWeightChart entries={weightEntries} targetWeight={client.T
