@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 const COLORS = {
@@ -50,8 +50,13 @@ function EyeIcon({ visible }) {
 }
 
 export default function LoginPage() {
-  const { login } = useAuth();
+  const { login, user, userType } = useAuth();
   const navigate = useNavigate();
+
+  // Already authenticated — skip straight to their area (fixes PWA re-open login loop)
+  if (user) {
+    return <Navigate to={userType === 'trainer' ? '/trainer/dashboard' : '/client/today'} replace />;
+  }
 
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
