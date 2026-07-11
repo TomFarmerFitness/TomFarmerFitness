@@ -1905,6 +1905,7 @@ export default function NutritionPage() {
           nutritionRows={dayRows}
           onClose={() => setShowMicros(false)}
         />
+      )}
 
       {/* ── Saved Meals modal ── */}
       {showSavedMeals && (
