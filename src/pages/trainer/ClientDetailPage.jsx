@@ -1179,8 +1179,8 @@ export default function ClientDetailPage() {
                   // Write to Clients sheet via proxy
                   await upsertRow('Clients', 'ClientID', client.ClientID, updatedClient);
 
-                  // Log the manual override to MacroAdjustments
-                  await appendToSheet('MacroAdjustments', {
+                  // Log to MacroAdjustments — best-effort, don't fail if tab missing
+                  appendToSheet('MacroAdjustments', {
                     AdjustmentID: `adj-manual-${Date.now()}`,
                     ClientID: client.ClientID,
                     AdjustedAt: today,
@@ -1195,7 +1195,7 @@ export default function ClientDetailPage() {
                     NewFats:     overrideForm.fats,
                     Reason: `Manual override by trainer. Auto-adjust paused until ${pauseUntilISO}.`,
                     WeightTrendKgPerWeek: '', NutritionCompliance: '', TrainingCompliance: '',
-                  });
+                  }).catch(err => console.warn('MacroAdjustments log skipped:', err));
 
                   // Optimistic local update
                   setClient(updatedClient);
