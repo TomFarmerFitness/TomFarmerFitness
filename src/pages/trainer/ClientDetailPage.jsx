@@ -1262,4 +1262,26 @@ export default function ClientDetailPage() {
               );
             })()}
 
-            <TrainerWeightChart entries={weightEntries} targetWeight={client.T
+            <TrainerWeightChart entries={weightEntries} targetWeight={client.TargetWeight} />
+          </div>
+
+          {/* Progress photos */}
+          <div style={cardStyle}>
+            <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 16px' }}>
+              Progress Photos
+              <span style={{ fontWeight: '400', color: '#475569', fontSize: '12px', marginLeft: '8px' }}>
+                {photos.length} {photos.length === 1 ? 'photo' : 'photos'}
+              </span>
+            </h3>
+            <TrainerPhotoGallery photos={photos} onViewPhoto={setViewingPhoto} />
+          </div>
+        </>
+      )}
+
+      {/* Photo lightbox */}
+      {viewingPhoto && (
+        <TrainerPhotoViewer photo={viewingPhoto} onClose={() => setViewingPhoto(null)} />
+      )}
+    </>
+  );
+}
