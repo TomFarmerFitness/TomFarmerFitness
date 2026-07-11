@@ -4,8 +4,34 @@ import config from '../config';
 
 const AuthContext = createContext(null);
 
-const SESSION_KEY = 'tff_session';
+const SESSION_KEY  = 'tff_session';
+const COOKIE_NAME  = 'tff_sess';
 const SESSION_DAYS = 365; // keep clients logged in for a full year
+
+// ── Cookie helpers (backup for when iOS clears localStorage) ─────────────────
+function saveSessionCookie(session) {
+  try {
+    const exp = new Date();
+    exp.setFullYear(exp.getFullYear() + 1);
+    document.cookie =
+      `${COOKIE_NAME}=${encodeURIComponent(JSON.stringify(session))}` +
+      `; expires=${exp.toUTCString()}; path=/; SameSite=Lax`;
+  } catch {}
+}
+
+function readSessionCookie() {
+  try {
+    const m = document.cookie.match(new RegExp('(?:^|; )' + COOKIE_NAME + '=([^;]*)'));
+    if (m) return JSON.parse(decodeURIComponent(m[1]));
+  } catch {}
+  return null;
+}
+
+function clearSessionCookie() {
+  try {
+    document.cookie = `${COOKIE_NAME}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+  } catch {}
+}
 
 // SHA-256 hash using native Web Crypto API (no extra packages needed)
 async function hashPassword(password) {
@@ -28,25 +54,33 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   // Restore session on app load
+  // Strategy: try localStorage first; if iOS cleared it, fall back to cookie.
   useEffect(() => {
     try {
+      let session = null;
+
+      // 1. Try localStorage
       const raw = localStorage.getItem(SESSION_KEY);
       if (raw) {
-        const session = JSON.parse(raw);
-        if (isSessionValid(session)) {
-          // Refresh timestamp on every restore so the 365-day window
-          // extends from last app open rather than original login date.
-          // This keeps the user permanently logged in as long as they
-          // open the app at least once a year.
-          const refreshed = { ...session, loggedInAt: new Date().toISOString() };
-          localStorage.setItem(SESSION_KEY, JSON.stringify(refreshed));
-          setUser(refreshed);
-        } else {
-          localStorage.removeItem(SESSION_KEY);
-        }
+        try { session = JSON.parse(raw); } catch {}
+      }
+
+      // 2. Fall back to cookie (more resilient on iOS)
+      if (!session) session = readSessionCookie();
+
+      if (session && isSessionValid(session)) {
+        // Refresh timestamp — extends the window from last app open
+        const refreshed = { ...session, loggedInAt: new Date().toISOString() };
+        localStorage.setItem(SESSION_KEY, JSON.stringify(refreshed));
+        saveSessionCookie(refreshed);
+        setUser(refreshed);
+      } else {
+        localStorage.removeItem(SESSION_KEY);
+        clearSessionCookie();
       }
     } catch {
       localStorage.removeItem(SESSION_KEY);
+      clearSessionCookie();
     } finally {
       setLoading(false);
     }
@@ -69,6 +103,7 @@ export function AuthProvider({ children }) {
         loggedInAt: new Date().toISOString(),
       };
       localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+      saveSessionCookie(session);
       setUser(session);
       return { success: true, userType: 'trainer' };
     }
@@ -118,6 +153,7 @@ export function AuthProvider({ children }) {
           loggedInAt: new Date().toISOString(),
         };
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+        saveSessionCookie(session);
         setUser(session);
         return { success: true, userType: 'client' };
       }
@@ -134,6 +170,7 @@ export function AuthProvider({ children }) {
 
   const logout = () => {
     localStorage.removeItem(SESSION_KEY);
+    clearSessionCookie();
     setUser(null);
   };
 

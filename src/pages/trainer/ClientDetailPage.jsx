@@ -1102,22 +1102,48 @@ export default function ClientDetailPage() {
                   cursor:'pointer', lineHeight:1, padding:'4px' }}>×</button>
             </div>
             <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'12px' }}>
+              {/* Macro inputs — calories auto-calculated */}
               {[
-                { label:'Daily Calories (kcal)', key:'calories' },
-                { label:'Protein (g)',           key:'protein'  },
-                { label:'Carbohydrates (g)',      key:'carbs'    },
-                { label:'Fats (g)',               key:'fats'     },
+                { label:'Protein (g)',      key:'protein' },
+                { label:'Carbohydrates (g)', key:'carbs'  },
+                { label:'Fats (g)',          key:'fats'   },
               ].map(({ label, key }) => (
                 <div key={key}>
                   <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
                     marginBottom:'5px', display:'block' }}>{label.toUpperCase()}</label>
                   <input type="number" min={0} value={overrideForm[key]}
-                    onChange={e => setOverrideForm(f => ({ ...f, [key]: e.target.value }))}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setOverrideForm(f => {
+                        const p  = parseFloat(key === 'protein' ? val : f.protein) || 0;
+                        const c  = parseFloat(key === 'carbs'   ? val : f.carbs)   || 0;
+                        const fa = parseFloat(key === 'fats'    ? val : f.fats)    || 0;
+                        return { ...f, [key]: val, calories: String(Math.round(p * 4 + c * 4 + fa * 9)) };
+                      });
+                    }}
                     style={{ width:'100%', background:'rgba(255,255,255,0.06)',
                       border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
                       color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
                 </div>
               ))}
+              {/* Calories — derived from macros, still editable */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+                  marginBottom:'5px', display:'block' }}>
+                  DAILY CALORIES (KCAL)
+                  <span style={{ color:'#22c55e', fontWeight:500, marginLeft:6, textTransform:'none', letterSpacing:0 }}>
+                    ← auto-calculated
+                  </span>
+                </label>
+                <input type="number" min={0} value={overrideForm.calories}
+                  onChange={e => setOverrideForm(f => ({ ...f, calories: e.target.value }))}
+                  style={{ width:'100%', background:'rgba(34,197,94,0.06)',
+                    border:'1px solid rgba(34,197,94,0.25)', borderRadius:'8px',
+                    color:'#f1f5f9', fontSize:'15px', fontWeight:600, padding:'10px 12px', boxSizing:'border-box' }} />
+                <div style={{ fontSize:'11px', color:'#475569', marginTop:'4px' }}>
+                  Protein × 4 + Carbs × 4 + Fats × 9
+                </div>
+              </div>
             </div>
             <div style={{ padding:'14px 20px', borderTop:'1px solid rgba(255,255,255,0.08)',
               display:'flex', gap:'10px' }}>

@@ -30,6 +30,13 @@ function getRecentFoods() {
   try { return JSON.parse(localStorage.getItem(RECENT_FOODS_KEY) || '[]'); } catch { return []; }
 }
 
+// ── Saved Meals (localStorage) ────────────────────────────────────────────────
+function getSavedMeals(clientId) {
+  try { return JSON.parse(localStorage.getItem(`tff_meals_${clientId}`) || '[]'); } catch { return []; }
+}
+function setSavedMeals(clientId, meals) {
+  try { localStorage.setItem(`tff_meals_${clientId}`, JSON.stringify(meals)); } catch {}
+}
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
@@ -1409,6 +1416,200 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
   );
 }
 
+// ─── SavedMealsModal ─────────────────────────────────────────────────────────
+
+function SavedMealsModal({ dayRows, clientId, onLogMeal, onClose }) {
+  const [meals,        setMeals]        = useState(() => getSavedMeals(clientId));
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [savingName,   setSavingName]   = useState('');
+  const [loggingId,    setLoggingId]    = useState(null);
+  const [savedFlash,   setSavedFlash]   = useState(false);
+
+  // Body scroll lock
+  useEffect(() => {
+    const scrollY = window.scrollY;
+    document.body.style.position = 'fixed';
+    document.body.style.top      = `-${scrollY}px`;
+    document.body.style.width    = '100%';
+    return () => {
+      document.body.style.position = '';
+      document.body.style.top      = '';
+      document.body.style.width    = '';
+      window.scrollTo(0, scrollY);
+    };
+  }, []);
+
+  function handleSaveMeal() {
+    if (!savingName.trim() || dayRows.length === 0) return;
+    const foods = dayRows.map(r => ({
+      foodName: r.foodName, servingG: r.servingG,
+      calories: r.calories, protein: r.protein, carbs: r.carbs,
+      fats: r.fats, fibre: r.fibre || 0, mealType: r.mealType,
+    }));
+    const meal = { id: `meal-${Date.now()}`, name: savingName.trim(),
+      createdAt: new Date().toISOString(), foods };
+    const updated = [meal, ...meals];
+    setMeals(updated);
+    setSavedMeals(clientId, updated);
+    setSavingName(''); setShowSaveForm(false);
+    setSavedFlash(true); setTimeout(() => setSavedFlash(false), 2500);
+  }
+
+  function handleDeleteMeal(id) {
+    const updated = meals.filter(m => m.id !== id);
+    setMeals(updated); setSavedMeals(clientId, updated);
+  }
+
+  async function handleLogMeal(meal) {
+    setLoggingId(meal.id);
+    for (let i = 0; i < meal.foods.length; i++) {
+      await onLogMeal({ ...meal.foods[i], micronutrients: null });
+      if (i < meal.foods.length - 1) await new Promise(r => setTimeout(r, 15));
+    }
+    setLoggingId(null);
+    onClose();
+  }
+
+  const content = (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000,
+      display: 'flex', flexDirection: 'column', background: 'var(--bg, #0a0a0a)' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '16px 16px 12px', borderBottom: '1px solid var(--border, #2a2a2a)' }}>
+        <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)' }}>🍽️ My Meals</span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer',
+          color: 'var(--text-secondary)', fontSize: 22, lineHeight: 1, padding: '2px 6px' }}>✕</button>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px' }}>
+
+        {/* Save today's foods */}
+        {dayRows.length > 0 && (
+          <div style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)',
+            borderRadius: 12, padding: '12px 14px', marginBottom: 14 }}>
+            {!showSaveForm ? (
+              <button onClick={() => setShowSaveForm(true)} style={{ width: '100%', background: 'none',
+                border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
+                color: '#22c55e', fontSize: 14, fontWeight: 600 }}>
+                <span style={{ fontSize: 18 }}>💾</span>
+                Save today's {dayRows.length} food{dayRows.length !== 1 ? 's' : ''} as a meal
+              </button>
+            ) : (
+              <div>
+                <div style={{ fontSize: 13, color: '#22c55e', fontWeight: 600, marginBottom: 8 }}>Meal name</div>
+                <input
+                  autoFocus
+                  value={savingName}
+                  onChange={e => setSavingName(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') handleSaveMeal();
+                    if (e.key === 'Escape') { setShowSaveForm(false); setSavingName(''); }
+                  }}
+                  placeholder="e.g. Post-Workout Shake"
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 10, boxSizing: 'border-box',
+                    background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(34,197,94,0.4)',
+                    color: 'var(--text-primary)', fontSize: 14, outline: 'none', marginBottom: 8 }}
+                />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={handleSaveMeal} disabled={!savingName.trim()} style={{
+                    flex: 1, padding: '9px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: savingName.trim() ? '#22c55e' : '#333',
+                    color: savingName.trim() ? '#000' : '#666', fontSize: 13, fontWeight: 700 }}>Save</button>
+                  <button onClick={() => { setShowSaveForm(false); setSavingName(''); }} style={{
+                    flex: 1, padding: '9px', borderRadius: 10, border: '1px solid #333',
+                    background: 'none', color: 'var(--text-secondary)', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {savedFlash && (
+          <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 12,
+            background: 'rgba(34,197,94,0.12)', border: '1px solid rgba(34,197,94,0.3)',
+            color: '#22c55e', fontSize: 13, fontWeight: 600, textAlign: 'center' }}>
+            ✓ Meal saved!
+          </div>
+        )}
+
+        {/* Meal list */}
+        {meals.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--text-secondary)' }}>
+            <div style={{ fontSize: 40, marginBottom: 12 }}>🍽️</div>
+            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 6, color: 'var(--text-primary)' }}>
+              No saved meals yet
+            </div>
+            <div style={{ fontSize: 13 }}>
+              Log some foods, then tap "Save today's foods as a meal" to create your first one.
+            </div>
+          </div>
+        ) : (
+          meals.map(meal => {
+            const totalCals  = meal.foods.reduce((s, f) => s + (f.calories || 0), 0);
+            const totalPro   = meal.foods.reduce((s, f) => s + (f.protein  || 0), 0);
+            const totalCarbs = meal.foods.reduce((s, f) => s + (f.carbs    || 0), 0);
+            const totalFats  = meal.foods.reduce((s, f) => s + (f.fats     || 0), 0);
+            const isLogging  = loggingId === meal.id;
+            return (
+              <div key={meal.id} style={{ background: 'var(--surface, #111)',
+                border: '1px solid var(--border, #2a2a2a)', borderRadius: 14,
+                padding: '14px', marginBottom: 10 }}>
+                {/* Name + delete */}
+                <div style={{ display: 'flex', justifyContent: 'space-between',
+                  alignItems: 'flex-start', marginBottom: 8 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>{meal.name}</div>
+                  <button onClick={() => handleDeleteMeal(meal.id)} style={{ background: 'none',
+                    border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 15,
+                    padding: '0 0 0 8px', lineHeight: 1 }}>🗑</button>
+                </div>
+                {/* Food preview */}
+                <div style={{ marginBottom: 10 }}>
+                  {meal.foods.slice(0, 3).map((f, i) => (
+                    <div key={i} style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 2 }}>
+                      • {f.foodName} ({Math.round(f.calories)} cal)
+                    </div>
+                  ))}
+                  {meal.foods.length > 3 && (
+                    <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>
+                      +{meal.foods.length - 3} more items
+                    </div>
+                  )}
+                </div>
+                {/* Macro chips */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+                  {[
+                    { label: `${Math.round(totalCals)} cal`, color: '#e2e8f0' },
+                    { label: `${Math.round(totalPro)}g P`,   color: '#3b82f6' },
+                    { label: `${Math.round(totalCarbs)}g C`, color: '#f59e0b' },
+                    { label: `${Math.round(totalFats)}g F`,  color: '#f97316' },
+                  ].map(({ label, color }) => (
+                    <span key={label} style={{ fontSize: 11, fontWeight: 600, color,
+                      background: 'rgba(255,255,255,0.05)', padding: '3px 8px', borderRadius: 6 }}>
+                      {label}
+                    </span>
+                  ))}
+                </div>
+                {/* Log button */}
+                <button onClick={() => handleLogMeal(meal)} disabled={isLogging} style={{
+                  width: '100%', padding: '10px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                  background: isLogging ? '#1a3a1a' : '#22c55e',
+                  color: isLogging ? '#22c55e' : '#000', fontSize: 13, fontWeight: 700 }}>
+                  {isLogging ? '⏳ Logging…' : `Log This Meal (${meal.foods.length} item${meal.foods.length !== 1 ? 's' : ''})`}
+                </button>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  const root = document.getElementById('modal-root') || document.body;
+  return createPortal(content, root);
+}
+
 // ─── NutritionPage (main) ──────────────────────────────────────────────────
 
 export default function NutritionPage() {
@@ -1430,6 +1631,9 @@ export default function NutritionPage() {
 
   // Micronutrients panel
   const [showMicros,     setShowMicros]     = useState(false);
+
+  // Saved meals
+  const [showSavedMeals, setShowSavedMeals] = useState(false);
 
   // ── Fetch data ────────────────────────────────────────────────────────────
 
@@ -1653,17 +1857,28 @@ export default function NutritionPage() {
             />
           ))}
 
-          {/* Quick add button at bottom */}
-          <div style={{ padding: '4px 16px 0' }}>
+          {/* Quick add + Meals buttons */}
+          <div style={{ padding: '4px 16px 0', display: 'flex', gap: 8 }}>
             <button
               onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
               style={{
-                width: '100%', padding: '14px', borderRadius: 14, border: 'none',
+                flex: 2, padding: '14px', borderRadius: 14, border: 'none',
                 background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
               + Add Food
+            </button>
+            <button
+              onClick={() => setShowSavedMeals(true)}
+              style={{
+                flex: 1, padding: '14px', borderRadius: 14, cursor: 'pointer',
+                background: 'var(--surface, #111)', border: '1px solid var(--border, #2a2a2a)',
+                color: 'var(--text-primary)', fontSize: 14, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              }}
+            >
+              🍽️ Meals
             </button>
           </div>
         </>
@@ -1689,6 +1904,16 @@ export default function NutritionPage() {
         <MicronutrientsPanel
           nutritionRows={dayRows}
           onClose={() => setShowMicros(false)}
+        />
+      )}
+
+      {/* ── Saved Meals modal ── */}
+      {showSavedMeals && (
+        <SavedMealsModal
+          dayRows={dayRows}
+          clientId={user.clientID}
+          onLogMeal={handleSaveFood}
+          onClose={() => setShowSavedMeals(false)}
         />
       )}
     </div>
