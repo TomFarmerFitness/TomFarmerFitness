@@ -41,7 +41,12 @@ function setSavedMeals(clientId, meals) {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 function todayISO() {
-  return new Date().toISOString().slice(0, 10);
+  // Use local date — toISOString() is UTC which shows yesterday before ~10am in Australia
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function formatDisplayDate(isoDate) {
@@ -545,11 +550,11 @@ function BarcodeScanner({ onResult, onClose }) {
       `}</style>
 
       {/* Backdrop */}
-      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 400, background: 'rgba(0,0,0,0.75)' }} />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 1300, background: 'rgba(0,0,0,0.75)' }} />
 
       {/* Modal */}
       <div style={{
-        position: 'fixed', zIndex: 401,
+        position: 'fixed', zIndex: 1301,
         top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
         width: Math.min(window.innerWidth - 32, scanSize + 48),
         background: '#111827', borderRadius: 20,
