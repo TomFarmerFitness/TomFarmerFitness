@@ -1568,86 +1568,82 @@ export default function ProgramLibraryPage() {
     setCreateOpen(true);
   };
 
+
   return (
-    <div style={{ minHeight:'100vh', background:'#0f172a', color:'#f1f5f9',
-      fontFamily:'-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
-      <div style={{ position:'fixed', left:'50%', transform:'translateX(-50%)',
-        width:'100%', maxWidth:'430px', height:'100dvh', display:'flex',
-        flexDirection:'column', overflow:'hidden' }}>
-
-        {/* Header */}
-        <div style={{ padding:'16px 16px 0', flexShrink:0 }}>
-          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'12px' }}>
-            <div>
-              <div style={{ color:'#f1f5f9', fontWeight:800, fontSize:'20px' }}>Program Library</div>
-              <div style={{ color:'#64748b', fontSize:'13px' }}>
-                {programs.length} program{programs.length !== 1 ? 's' : ''}
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:'8px' }}>
-              <button onClick={() => setGenerate(true)}
-                style={{ padding:'8px 12px', background:'rgba(249,115,22,0.15)',
-                  border:'1px solid rgba(249,115,22,0.3)', borderRadius:'8px',
-                  color:'#f97316', fontSize:'13px', cursor:'pointer', fontWeight:600 }}>
-                ✨ AI
-              </button>
-              <button onClick={() => { setAIInitial(null); setCreateOpen(true); }}
-                style={{ padding:'8px 14px', background:'#f97316', border:'none',
-                  borderRadius:'8px', color:'#fff', fontSize:'13px', cursor:'pointer', fontWeight:600 }}>
-                + Create
-              </button>
-            </div>
+    <>
+      {/* Header */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px' }}>
+        <div>
+          <h1 style={{ color:'#f1f5f9', fontWeight:800, fontSize:'22px', margin:0 }}>Program Library</h1>
+          <div style={{ color:'#64748b', fontSize:'13px', marginTop:'4px' }}>
+            {programs.length} program{programs.length !== 1 ? 's' : ''}
           </div>
-          {/* Search */}
-          <input
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search programs…"
-            style={{
-              width: '100%', boxSizing: 'border-box',
-              padding: '9px 14px', borderRadius: '10px',
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.08)',
-              color: '#f1f5f9', fontSize: '14px', outline: 'none',
-              marginBottom: '10px',
-            }}
-          />
-          <FilterBar active={goalFilter} onChange={setGoalFilter} />
         </div>
+        <div style={{ display:'flex', gap:'8px' }}>
+          <button onClick={() => setGenerate(true)}
+            style={{ padding:'8px 12px', background:'rgba(249,115,22,0.15)',
+              border:'1px solid rgba(249,115,22,0.3)', borderRadius:'8px',
+              color:'#f97316', fontSize:'13px', cursor:'pointer', fontWeight:600 }}>
+            ✨ AI
+          </button>
+          <button onClick={() => { setAIInitial(null); setCreateOpen(true); }}
+            style={{ padding:'8px 14px', background:'#f97316', border:'none',
+              borderRadius:'8px', color:'#fff', fontSize:'13px', cursor:'pointer', fontWeight:600 }}>
+            + Create
+          </button>
+        </div>
+      </div>
 
-        {/* Program list */}
-        <div style={{ overflowY:'auto', flex:1, padding:'8px 16px 16px' }}>
-          {loading ? (
-            <div style={{ display:'flex', justifyContent:'center', alignItems:'center',
-              height:'200px', color:'#64748b' }}>Loading programs…</div>
-          ) : error ? (
-            <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)',
-              borderRadius:'10px', padding:'16px', color:'#fca5a5', margin:'16px 0' }}>
-              {error}
-            </div>
-          ) : filtered.length === 0 ? (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', height:'200px', gap:'12px', color:'#64748b' }}>
-              <div style={{ fontSize:'36px' }}>📋</div>
-              <div style={{ fontSize:'14px', textAlign:'center' }}>
-                {searchQuery ? `No programs matching "${searchQuery}"` : goalFilter !== 'All' ? `No ${goalFilter} programs yet` : 'No programs yet'}
-              </div>
-              <button onClick={() => { setAIInitial(null); setCreateOpen(true); }}
-                style={{ padding:'10px 20px', background:'#f97316', border:'none',
-                  borderRadius:'8px', color:'#fff', fontSize:'14px', cursor:'pointer' }}>
-                Create your first program
-              </button>
-            </div>
-          ) : filtered.map(prog => (
+      {/* Search */}
+      <input
+        value={searchQuery}
+        onChange={e => setSearchQuery(e.target.value)}
+        placeholder="Search programs…"
+        style={{
+          width: '100%', boxSizing: 'border-box',
+          padding: '9px 14px', borderRadius: '10px',
+          background: 'rgba(255,255,255,0.05)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#f1f5f9', fontSize: '14px', outline: 'none',
+          marginBottom: '10px',
+        }}
+      />
+      <FilterBar active={goalFilter} onChange={setGoalFilter} />
+
+      {/* Program list */}
+      {loading ? (
+        <div style={{ display:'flex', justifyContent:'center', alignItems:'center',
+          height:'200px', color:'#64748b' }}>Loading programs…</div>
+      ) : error ? (
+        <div style={{ background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)',
+          borderRadius:'10px', padding:'16px', color:'#fca5a5', margin:'16px 0' }}>
+          {error}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
+          justifyContent:'center', height:'200px', gap:'12px', color:'#64748b' }}>
+          <div style={{ fontSize:'36px' }}>📋</div>
+          <div style={{ fontSize:'14px', textAlign:'center' }}>
+            {searchQuery ? `No programs matching "${searchQuery}"` : goalFilter !== 'All' ? `No ${goalFilter} programs yet` : 'No programs yet'}
+          </div>
+          <button onClick={() => { setAIInitial(null); setCreateOpen(true); }}
+            style={{ padding:'10px 20px', background:'#f97316', border:'none',
+              borderRadius:'8px', color:'#fff', fontSize:'14px', cursor:'pointer' }}>
+            Create your first program
+          </button>
+        </div>
+      ) : (
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(340px, 1fr))', gap:'20px' }}>
+          {filtered.map(prog => (
             <ProgramCard key={prog.id} program={prog}
               clientCount={(assignedMap[prog.id]||[]).length}
               onDelete={() => handleDeleteProgram(prog.id)}
               onEdit={() => setEditTarget(prog)}
-              onCopy={() => handleCopy(prog)}
+              onDuplicate={() => handleCopy(prog)}
               onAssign={() => setAssignTarget(prog)} />
           ))}
         </div>
-      </div>
+      )}
 
       {/* Modals */}
       {(createOpen || editTarget) && (
@@ -1668,6 +1664,6 @@ export default function ProgramLibraryPage() {
           onClose={() => setGenerate(false)}
           onGenerated={(prog) => { setAIInitial(prog); setGenerate(false); setCreateOpen(true); }} />
       )}
-    </div>
+    </>
   );
 }
