@@ -687,7 +687,7 @@ function scaleNutrition(food, grams) {
   };
 }
 
-function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMealType = false }) {
+function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMealType = false, savedMeals = [], onLogMeal = null }) {
   const overlayRef = useRef(null);
   const sheetRef   = useRef(null);
 
@@ -852,7 +852,7 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMea
         ref={overlayRef}
         onClick={e => { if (e.target === overlayRef.current) closeWithAnimation(onClose); }}
         style={{
-          position: 'fixed', inset: 0, zIndex: 300,
+          position: 'fixed', inset: 0, zIndex: 1200,
           background: 'rgba(0,0,0,0.6)',
           display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
         }}
@@ -947,6 +947,34 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMea
             ) : step === 'search' ? (
               /* ── SEARCH STEP ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {/* ── My Meals quick-log section ── */}
+                {!hideMealType && savedMeals.length > 0 && onLogMeal && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+                      🍽️ My Meals
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch' }}>
+                      {savedMeals.map(meal => {
+                        const t = meal.foods.reduce((a, f) => ({ cal: a.cal+(f.calories||0), p: a.p+(f.protein||0) }), { cal:0, p:0 });
+                        return (
+                          <div key={meal.id} style={{ flexShrink: 0, minWidth: 150, background: 'var(--surface-secondary, #1a1a1a)', border: '1px solid var(--border, #333)', borderRadius: 12, padding: '10px 12px' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 140 }}>{meal.name}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>{Math.round(t.cal)} kcal · {Math.round(t.p)}g P · {meal.foods.length} item{meal.foods.length !== 1 ? 's' : ''}</div>
+                            <button
+                              onClick={() => onLogMeal(meal, mealType)}
+                              style={{ width: '100%', padding: '6px 0', borderRadius: 8, border: 'none', background: '#f97316', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+                            >
+                              Log →
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{ height: 1, background: 'var(--border, #2a2a2a)', margin: '4px 0 2px' }} />
+                  </div>
+                )}
+
                 <div style={{ display: 'flex', gap: 8 }}>
                   <input
                     style={{ ...inputStyle, flex: 1 }}
@@ -1896,6 +1924,13 @@ export default function NutritionPage() {
           clientTargets={targets}
           onSave={handleSaveFood}
           onClose={() => setShowAddFood(false)}
+          savedMeals={getSavedMeals(user.clientID)}
+          onLogMeal={async (meal, mealType) => {
+            for (const food of meal.foods) {
+              await handleSaveFood({ ...food, mealType });
+            }
+            setShowAddFood(false);
+          }}
         />
       )}
 
