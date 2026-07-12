@@ -534,6 +534,8 @@ export default function ClientDetailPage() {
   const [showOverride,  setShowOverride]  = useState(false);
   const [overrideForm,  setOverrideForm]  = useState({ calories: '', protein: '', carbs: '', fats: '' });
   const [overrideSaving, setOverrideSaving] = useState(false);
+  const [showTDEE,      setShowTDEE]      = useState(false);
+  const [tdeeForm,      setTdeeForm]      = useState({ sex: 'male', age: '', weight: '', height: '', activity: '1.55', goal: 'lose_moderate' });
   const [statusSaving,  setStatusSaving]  = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -869,21 +871,40 @@ export default function ClientDetailPage() {
             <div style={cardStyle}>
               <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
                 <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>Daily Macro Targets</h3>
-                <button
-                  onClick={() => {
-                    setOverrideForm({
-                      calories: client.DailyCalories || client.TargetCalories || '',
-                      protein:  client.ProteinTarget || client.TargetProtein   || '',
-                      carbs:    client.CarbTarget    || client.TargetCarbs     || '',
-                      fats:     client.FatTarget     || client.TargetFats      || '',
-                    });
-                    setShowOverride(true);
-                  }}
-                  style={{ padding:'5px 12px', borderRadius:'8px', border:'none',
-                    background:'rgba(249,115,22,0.1)', color:'#f97316',
-                    fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
-                  ✏️ Edit Targets
-                </button>
+                <div style={{ display:'flex', gap:'6px' }}>
+                  <button
+                    onClick={() => {
+                      setTdeeForm({
+                        sex:      (client.Gender || 'male').toLowerCase(),
+                        age:      client.Age || '',
+                        weight:   currentWeight || client.CurrentWeight || '',
+                        height:   client.Height || '',
+                        activity: '1.55',
+                        goal:     'lose_moderate',
+                      });
+                      setShowTDEE(true);
+                    }}
+                    style={{ padding:'5px 12px', borderRadius:'8px', border:'none',
+                      background:'rgba(59,130,246,0.12)', color:'#60a5fa',
+                      fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
+                    🧮 TDEE
+                  </button>
+                  <button
+                    onClick={() => {
+                      setOverrideForm({
+                        calories: client.DailyCalories || client.TargetCalories || '',
+                        protein:  client.ProteinTarget || client.TargetProtein   || '',
+                        carbs:    client.CarbTarget    || client.TargetCarbs     || '',
+                        fats:     client.FatTarget     || client.TargetFats      || '',
+                      });
+                      setShowOverride(true);
+                    }}
+                    style={{ padding:'5px 12px', borderRadius:'8px', border:'none',
+                      background:'rgba(249,115,22,0.1)', color:'#f97316',
+                      fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
+                    ✏️ Edit
+                  </button>
+                </div>
               </div>
               {client.DailyCalories || client.TargetCalories ? (
                 <>
@@ -1082,6 +1103,189 @@ export default function ClientDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ── TDEE Calculator modal ── */}
+      {showTDEE && (() => {
+        const sex    = tdeeForm.sex;
+        const age    = parseFloat(tdeeForm.age)    || 0;
+        const kg     = parseFloat(tdeeForm.weight) || 0;
+        const cm     = parseFloat(tdeeForm.height) || 0;
+        const act    = parseFloat(tdeeForm.activity) || 1.55;
+        const ready  = age > 0 && kg > 0 && cm > 0;
+
+        // Mifflin-St Jeor BMR
+        const bmr  = ready ? Math.round((10 * kg) + (6.25 * cm) - (5 * age) + (sex === 'male' ? 5 : -161)) : 0;
+        const tdee = ready ? Math.round(bmr * act) : 0;
+
+        // Goal calorie adjustments
+        const goalDeltas = {
+          lose_aggressive: -750, lose_moderate: -500, lose_mild: -250,
+          maintain: 0,
+          gain_mild: 250, gain_moderate: 500,
+        };
+        const delta    = goalDeltas[tdeeForm.goal] || 0;
+        const targetCal = Math.max(1200, tdee + delta);
+
+        // Macro split: protein first, then fat, then carbs fill the rest
+        const proteinG  = ready ? Math.round(kg * (tdeeForm.goal.includes('lose') ? 2.2 : 2.0)) : 0;
+        const fatPct    = tdeeForm.goal === 'maintain' ? 0.30 : 0.25;
+        const fatG      = ready ? Math.round((targetCal * fatPct) / 9) : 0;
+        const carbCals  = targetCal - (proteinG * 4) - (fatG * 9);
+        const carbG     = ready ? Math.max(0, Math.round(carbCals / 4)) : 0;
+
+        const inp = { width:'100%', boxSizing:'border-box', padding:'9px 11px',
+          background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+          borderRadius:'8px', color:'#f1f5f9', fontSize:'14px' };
+        const lbl = { color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+          marginBottom:'5px', display:'block', textTransform:'uppercase' };
+
+        return (
+          <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.8)', zIndex:1000,
+            display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}
+            onClick={e => { if (e.target === e.currentTarget) setShowTDEE(false); }}>
+            <div style={{ background:'#1e293b', borderRadius:'16px', width:'100%', maxWidth:'480px',
+              maxHeight:'90vh', overflowY:'auto', boxShadow:'0 24px 64px rgba(0,0,0,0.5)' }}>
+
+              {/* Header */}
+              <div style={{ padding:'18px 20px 14px', borderBottom:'1px solid rgba(255,255,255,0.08)',
+                display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                <div>
+                  <div style={{ color:'#f1f5f9', fontSize:'16px', fontWeight:700 }}>🧮 TDEE Calculator</div>
+                  <div style={{ color:'#64748b', fontSize:'12px', marginTop:2 }}>Total Daily Energy Expenditure · Mifflin-St Jeor</div>
+                </div>
+                <button onClick={() => setShowTDEE(false)} style={{ background:'none', border:'none',
+                  color:'#64748b', fontSize:'22px', cursor:'pointer', lineHeight:1, padding:'4px' }}>×</button>
+              </div>
+
+              <div style={{ padding:'18px 20px', display:'flex', flexDirection:'column', gap:'14px' }}>
+
+                {/* Sex + Age row */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                  <div>
+                    <label style={lbl}>Sex</label>
+                    <select value={tdeeForm.sex} onChange={e => setTdeeForm(f => ({ ...f, sex: e.target.value }))} style={{ ...inp, cursor:'pointer' }}>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={lbl}>Age (years)</label>
+                    <input type="number" min={10} max={100} placeholder="e.g. 32" style={inp}
+                      value={tdeeForm.age} onChange={e => setTdeeForm(f => ({ ...f, age: e.target.value }))} />
+                  </div>
+                </div>
+
+                {/* Weight + Height row */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                  <div>
+                    <label style={lbl}>Weight (kg)</label>
+                    <input type="number" min={30} max={300} placeholder="e.g. 85" style={inp}
+                      value={tdeeForm.weight} onChange={e => setTdeeForm(f => ({ ...f, weight: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label style={lbl}>Height (cm)</label>
+                    <input type="number" min={100} max={250} placeholder="e.g. 178" style={inp}
+                      value={tdeeForm.height} onChange={e => setTdeeForm(f => ({ ...f, height: e.target.value }))} />
+                  </div>
+                </div>
+
+                {/* Activity level */}
+                <div>
+                  <label style={lbl}>Activity Level</label>
+                  <select value={tdeeForm.activity} onChange={e => setTdeeForm(f => ({ ...f, activity: e.target.value }))} style={{ ...inp, cursor:'pointer' }}>
+                    <option value="1.2">Sedentary — desk job, little/no exercise</option>
+                    <option value="1.375">Lightly Active — exercise 1–3 days/week</option>
+                    <option value="1.55">Moderately Active — exercise 3–5 days/week</option>
+                    <option value="1.725">Very Active — hard exercise 6–7 days/week</option>
+                    <option value="1.9">Extra Active — physical job + daily training</option>
+                  </select>
+                </div>
+
+                {/* Goal */}
+                <div>
+                  <label style={lbl}>Goal</label>
+                  <select value={tdeeForm.goal} onChange={e => setTdeeForm(f => ({ ...f, goal: e.target.value }))} style={{ ...inp, cursor:'pointer' }}>
+                    <option value="lose_aggressive">Aggressive Fat Loss (−750 kcal · ~0.85kg/wk)</option>
+                    <option value="lose_moderate">Moderate Fat Loss (−500 kcal · ~0.5kg/wk)</option>
+                    <option value="lose_mild">Mild Fat Loss (−250 kcal · ~0.25kg/wk)</option>
+                    <option value="maintain">Maintain Weight</option>
+                    <option value="gain_mild">Lean Bulk (+250 kcal · ~0.25kg/wk)</option>
+                    <option value="gain_moderate">Moderate Bulk (+500 kcal · ~0.5kg/wk)</option>
+                  </select>
+                </div>
+
+                {/* Results */}
+                {ready && (
+                  <div style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
+                    borderRadius:'12px', padding:'16px', marginTop:'2px' }}>
+                    <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:'10px', marginBottom:'14px' }}>
+                      {[
+                        { label:'BMR', value:`${bmr.toLocaleString()} kcal`, sub:'Base metabolic rate', color:'#94a3b8' },
+                        { label:'TDEE', value:`${tdee.toLocaleString()} kcal`, sub:'Maintenance calories', color:'#60a5fa' },
+                        { label:'Target', value:`${targetCal.toLocaleString()} kcal`, sub: delta === 0 ? 'Maintenance' : delta > 0 ? `+${delta} surplus` : `${delta} deficit`, color:'#f97316' },
+                      ].map(({ label, value, sub, color }) => (
+                        <div key={label} style={{ textAlign:'center', padding:'10px 6px',
+                          background:'rgba(0,0,0,0.2)', borderRadius:'8px' }}>
+                          <div style={{ fontSize:'11px', color:'#475569', marginBottom:'4px', textTransform:'uppercase', letterSpacing:'0.05em' }}>{label}</div>
+                          <div style={{ fontSize:'16px', fontWeight:'700', color }}>{value}</div>
+                          <div style={{ fontSize:'10px', color:'#475569', marginTop:'3px' }}>{sub}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{ fontSize:'12px', color:'#64748b', marginBottom:'10px', textAlign:'center' }}>Suggested macros</div>
+                    <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:'8px' }}>
+                      {[
+                        { label:'Protein', value:`${proteinG}g`, color:'#4ade80', note:'2.2g/kg (loss) · 2.0g/kg (gain)' },
+                        { label:'Carbs',   value:`${carbG}g`,    color:'#60a5fa', note:'Fills remaining calories' },
+                        { label:'Fats',    value:`${fatG}g`,     color:'#fbbf24', note: tdeeForm.goal === 'maintain' ? '30% of calories' : '25% of calories' },
+                      ].map(({ label, value, color }) => (
+                        <div key={label} style={{ textAlign:'center', padding:'8px 4px',
+                          background:'rgba(0,0,0,0.2)', borderRadius:'8px' }}>
+                          <div style={{ fontSize:'18px', fontWeight:'700', color }}>{value}</div>
+                          <div style={{ fontSize:'10px', color:'#64748b', textTransform:'uppercase' }}>{label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {!ready && (
+                  <div style={{ textAlign:'center', padding:'20px', color:'#475569', fontSize:'13px',
+                    background:'rgba(255,255,255,0.03)', borderRadius:'10px' }}>
+                    Fill in age, weight and height to see the calculation
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div style={{ padding:'14px 20px', borderTop:'1px solid rgba(255,255,255,0.08)',
+                display:'flex', gap:'10px' }}>
+                <button onClick={() => setShowTDEE(false)}
+                  style={{ flex:1, padding:'11px', background:'rgba(255,255,255,0.06)',
+                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'10px',
+                    color:'#94a3b8', fontSize:'14px', cursor:'pointer' }}>Cancel</button>
+                <button
+                  onClick={() => {
+                    setOverrideForm({
+                      calories: String(targetCal),
+                      protein:  String(proteinG),
+                      carbs:    String(carbG),
+                      fats:     String(fatG),
+                    });
+                    setShowTDEE(false);
+                    setShowOverride(true);
+                  }}
+                  style={{ flex:2, padding:'11px', borderRadius:'10px', border:'none',
+                    background: ready ? '#f97316' : 'rgba(249,115,22,0.3)',
+                    color: ready ? '#fff' : '#9a5c1e', fontSize:'14px', fontWeight:700,
+                    cursor: ready ? 'pointer' : 'not-allowed' }}>
+                  Apply to Client →
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Override modal */}
       {showOverride && (
