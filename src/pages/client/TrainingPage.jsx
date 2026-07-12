@@ -12,7 +12,8 @@ const DEFAULT_SCHEDULES = {
   1:[0], 2:[0,3], 3:[0,2,4], 4:[0,1,3,4],
   5:[0,1,2,3,4], 6:[0,1,2,3,4,5], 7:[0,1,2,3,4,5,6],
 };
-const DOW_MAP = { Monday:0,Tuesday:1,Wednesday:2,Thursday:3,Friday:4,Saturday:5,Sunday:6 };
+const DOW_MAP = { Monday:0,Tuesday:1,Wednesday:2,Thursday:3,Friday:4,Saturday:5,Sunday:6,
+                  Mon:0,Tue:1,Wed:2,Thu:3,Fri:4,Sat:5,Sun:6 };
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function todayISO() {
@@ -35,7 +36,14 @@ function getWeekDays() {
 }
 
 function getSessionForDay(sessions, weekIdx, daysPerWeek, trainingDaysSet) {
-  // If specific training days assigned, use those
+  // Priority 1: sessions with DayOfWeek set (new weekDay-based programs)
+  const byDow = sessions.find(s => s.DayOfWeek && DOW_MAP[s.DayOfWeek] === weekIdx);
+  if (byDow) return byDow;
+
+  // Priority 2: if all sessions have a DayOfWeek but none matched this weekIdx — it's a rest day
+  if (sessions.length > 0 && sessions.every(s => !!s.DayOfWeek)) return null;
+
+  // Priority 3: explicit training days set on the client profile (legacy)
   if (trainingDaysSet && trainingDaysSet.size > 0) {
     const dayName = DAY_NAMES[weekIdx];
     if (!trainingDaysSet.has(dayName)) return null;
@@ -44,8 +52,8 @@ function getSessionForDay(sessions, weekIdx, daysPerWeek, trainingDaysSet) {
     if (pos === -1) return null;
     return [...sessions].sort((a,b)=>(parseInt(a.DayOrder)||0)-(parseInt(b.DayOrder)||0))[pos] || null;
   }
-  const byDow = sessions.find(s => s.DayOfWeek && DOW_MAP[s.DayOfWeek] === weekIdx);
-  if (byDow) return byDow;
+
+  // Priority 4: default schedule based on daysPerWeek
   const schedule = DEFAULT_SCHEDULES[Math.min(Math.max(parseInt(daysPerWeek)||3,1),7)] || DEFAULT_SCHEDULES[3];
   const pos = schedule.indexOf(weekIdx);
   if (pos === -1) return null;
@@ -1924,9 +1932,18 @@ export default function TrainingPage() {
       setCurrentPhaseIdx(phaseIdx);
       setCurrentWeek(weekNum);
 
-      const assignedDays = profile?.TrainingDays
-        ? new Set(profile.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean))
-        : null;
+      // Build training days set: prefer program's weekDay-based days, fall back to client profile
+      let assignedDays = null;
+      if (profile?.TrainingDays) {
+        assignedDays = new Set(profile.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean));
+      }
+      // If program has weekDay-based days, those take precedence over the client profile field
+      const phaseDaysForTd = (parsedPhases?.[parseInt(profile?.CurrentPhaseIdx)||0]?.days) ||
+        (myProgram?.DaysJSON ? (() => { try { return JSON.parse(myProgram.DaysJSON); } catch { return []; } })() : []);
+      const programTrainingDays = phaseDaysForTd.filter(d => !d.isRestDay && d.weekDay).map(d => d.weekDay);
+      if (programTrainingDays.length > 0) {
+        assignedDays = new Set(programTrainingDays);
+      }
       setTrainingDays(assignedDays);
 
       // Build sessions from current phase days (or DaysJSON fallback)
@@ -1934,11 +1951,16 @@ export default function TrainingPage() {
       const currentPhaseDays = parsedPhases?.[phaseIdx]?.days;
       const daysSource = currentPhaseDays || (myProgram?.DaysJSON ? (() => { try { return JSON.parse(myProgram.DaysJSON); } catch { return []; } })() : []);
       if (daysSource.length > 0 && myProgram) {
-        mySessions = daysSource.map(day => ({
+        // Only include training days (not rest days)
+        mySessions = daysSource
+          .filter(day => !day.isRestDay)
+          .map((day, pos) => ({
           SessionID:   `${myProgram.ProgramID}_p${phaseIdx}_day${day.dayOrder}`,
           ProgramID:   myProgram.ProgramID,
-          DayOrder:    String(day.dayOrder),
-          SessionName: day.dayName || `Day ${day.dayOrder}`,
+          DayOrder:    String(day.dayOrder || pos + 1),
+          // weekDay is the day-of-week this session falls on (Mon, Tue, etc.)
+          DayOfWeek:   day.weekDay || null,
+          SessionName: day.dayName || day.weekDay || `Day ${pos + 1}`,
           FocusArea:   day.focusArea || '',
           Exercises:   JSON.stringify(day.exercises || []),
           PhaseIdx:    phaseIdx,

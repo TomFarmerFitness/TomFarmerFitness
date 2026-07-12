@@ -52,7 +52,7 @@ const WD_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
 function initDays(daysPerWeek, existing = []) {
   return Array.from({ length: 7 }, (_, i) => {
     const isRest = i >= daysPerWeek;
-    if (existing[i]) return { ...existing[i], weekDay: existing[i].weekDay || WD_NAMES[i] };
+    if (existing[i]) return { ...existing[i], weekDay: WD_NAMES[i] };
     return {
       id:        generateId('day'),
       dayOrder:  i + 1,
