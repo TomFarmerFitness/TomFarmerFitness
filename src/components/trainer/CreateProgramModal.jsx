@@ -55,6 +55,7 @@ function initDays(daysPerWeek, existing = []) {
       id:        generateId('day'),
       dayOrder:  i + 1,
       dayName:   isRest ? 'Rest Day' : '',
+      weekDay:   '',
       focusArea: '',
       exercises: [],
       isRestDay: isRest,
@@ -271,6 +272,8 @@ function StepDefinePhases({ phases, daysPerWeek, onPhasesChange }) {
 }
 
 // ─── CreateProgramModal — Step 3: Build Day Templates per Phase ───────────────
+const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
 function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
   const [activePhase, setActivePhase] = useState(0);
   const inputStyle = {
@@ -347,6 +350,27 @@ function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
                 style={{ ...inputStyle, flex:1 }} />
             )}
           </div>
+          {!day.isRestDay && (
+            <div style={{ marginTop:'10px', display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
+              <span style={{ fontSize:'11px', color:'#475569', flexShrink:0 }}>Day:</span>
+              {WEEK_DAYS.map(wd => {
+                const active = (day.weekDay || '') === wd;
+                return (
+                  <button key={wd}
+                    onClick={() => updateDay(activePhase, i, 'weekDay', active ? '' : wd)}
+                    style={{ padding:'4px 10px', borderRadius:'20px', border:'none',
+                      fontSize:'12px', cursor:'pointer', fontWeight: active ? 700 : 400,
+                      background: active ? '#f97316' : 'rgba(255,255,255,0.08)',
+                      color: active ? '#fff' : '#64748b', transition:'all 0.15s' }}>
+                    {wd}
+                  </button>
+                );
+              })}
+              {day.weekDay && (
+                <span style={{ fontSize:'11px', color:'#f97316', marginLeft:'4px' }}>✓ {day.weekDay}</span>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
@@ -737,6 +761,8 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
                     : (activeDay===i ? '#fff' : '#94a3b8'),
                   transition:'all 0.15s', flexShrink:0 }}>
                 {d.isRestDay ? '🌙' : (d.dayName || `Day ${i+1}`)}
+                {!d.isRestDay && d.weekDay &&
+                  <span style={{ marginLeft:'4px', opacity:0.75, fontSize:'10px' }}>{d.weekDay}</span>}
                 {!d.isRestDay && (d.exercises||[]).length > 0 &&
                   <span style={{ marginLeft:'4px', opacity:0.7 }}>({d.exercises.length})</span>}
               </button>
@@ -969,6 +995,5 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
     </div>
   );
 }
-
 
 export { parsePhasesFromProgram, CreateProgramModal, generateId, initDays, initPhase, initPhases, totalProgramWeeks };
