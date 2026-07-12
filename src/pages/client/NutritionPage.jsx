@@ -1954,11 +1954,6 @@ export default function NutritionPage() {
               style={{
                 flex: 2, padding: '14px', borderRadius: 14, border: 'none',
                 background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
-            <button
-              onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
-              style={{
-                flex: 2, padding: '14px', borderRadius: 14, border: 'none',
-                background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
