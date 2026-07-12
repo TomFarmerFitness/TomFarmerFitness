@@ -6,6 +6,7 @@ import {
   Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts';
 import { readSheet, upsertRow, appendToSheet, deleteRow, deleteRowsWhere } from '../../utils/sheets';
+import { CreateProgramModal, parsePhasesFromProgram, generateId } from '../../components/trainer/CreateProgramModal';
 import config from '../../config';
 
 async function sha256(str) {
@@ -544,6 +545,8 @@ export default function ClientDetailPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting,      setDeleting]      = useState(false);
   const [assignedProgram, setAssignedProgram] = useState(null);
+  const [allExercises,  setAllExercises]  = useState([]);
+  const [showEditProgram, setShowEditProgram] = useState(false);
   const [checkins,      setCheckins]      = useState([]);
   const [aiQuestions,   setAiQuestions]   = useState([]);
 
@@ -551,13 +554,14 @@ export default function ClientDetailPage() {
     async function load() {
       try {
         setLoading(true);
-        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows, preCheckins, aiQs] = await Promise.all([
+        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows, rawExercises, preCheckins, aiQs] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
           readSheet('BodyMetrics').catch(() => []),
           readSheet('ProgressPhotos').catch(() => []),
           readSheet('MacroAdjustments').catch(() => []),
           readSheet('Programs').catch(() => []),
+          readSheet('Exercises').catch(() => []),
           readSheet('PreWorkoutCheckins').catch(() => []),
           readSheet('AIQuestions').catch(() => []),
         ]);
@@ -577,6 +581,7 @@ export default function ClientDetailPage() {
           myProgram = { ...myProgRaw, phases };
         }
         setAssignedProgram(myProgram);
+        setAllExercises(rawExercises || []);
 
         setCheckins(
           (preCheckins || [])
@@ -958,7 +963,6 @@ export default function ClientDetailPage() {
               {[
                 { label: 'Gender',    value: client.Gender },
                 { label: 'Equipment', value: client.Equipment },
-                { label: 'Program',   value: assignedProgram ? assignedProgram.Name || assignedProgram.ProgramID : 'None assigned' },
                 { label: 'Injuries',  value: client.Injuries  || 'None noted' },
                 { label: 'Notes',     value: client.Notes     || '—' },
               ].map(({ label, value }) => (
@@ -967,6 +971,23 @@ export default function ClientDetailPage() {
                   <div style={{ fontSize: '13px', color: '#cbd5e1', marginTop: '2px' }}>{value || '—'}</div>
                 </div>
               ))}
+              {/* Program row with edit button */}
+              <div style={{ marginBottom: '10px', paddingBottom: '10px', borderBottom: '1px solid rgba(255,255,255,0.05)', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                <div style={{ flex:1 }}>
+                  <div style={{ fontSize: '11px', color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Program</div>
+                  <div style={{ fontSize: '13px', color: '#cbd5e1', marginTop: '2px' }}>
+                    {assignedProgram ? assignedProgram.Name || assignedProgram.ProgramID : 'None assigned'}
+                  </div>
+                </div>
+                {assignedProgram && (
+                  <button onClick={() => setShowEditProgram(true)}
+                    style={{ padding:'4px 10px', borderRadius:'7px', border:'none',
+                      background:'rgba(96,165,250,0.1)', color:'#60a5fa',
+                      fontSize:'11px', fontWeight:600, cursor:'pointer', flexShrink:0 }}>
+                    ✏️ Edit
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -1751,6 +1772,69 @@ export default function ClientDetailPage() {
       {/* Photo lightbox */}
       {viewingPhoto && (
         <TrainerPhotoViewer photo={viewingPhoto} onClose={() => setViewingPhoto(null)} />
+      )}
+
+      {/* Edit Program Modal */}
+      {showEditProgram && assignedProgram && (
+        <CreateProgramModal
+          initial={{
+            id: `prog-${client.ClientID}`,
+            name: assignedProgram.Name || assignedProgram.name || '',
+            description: assignedProgram.Description || assignedProgram.description || '',
+            goal: assignedProgram.Goal || assignedProgram.goal || 'General Fitness',
+            daysPerWeek: +(assignedProgram.DaysPerWeek || assignedProgram.daysPerWeek) || 4,
+            level: assignedProgram.Level || assignedProgram.level || 'Intermediate',
+            equipment: assignedProgram.Equipment
+              ? (typeof assignedProgram.Equipment === 'string'
+                  ? assignedProgram.Equipment.split(',').map(s => s.trim()).filter(Boolean)
+                  : assignedProgram.Equipment)
+              : (assignedProgram.equipment || []),
+            focusAreas: assignedProgram.FocusAreas
+              ? (typeof assignedProgram.FocusAreas === 'string'
+                  ? assignedProgram.FocusAreas.split(',').map(s => s.trim()).filter(Boolean)
+                  : assignedProgram.FocusAreas)
+              : (assignedProgram.focusAreas || []),
+            sessionDuration: +(assignedProgram.SessionDuration || assignedProgram.sessionDuration) || 60,
+            trainingType: assignedProgram.TrainingType || assignedProgram.trainingType || 'Hypertrophy',
+            durationWeeks: +(assignedProgram.DurationWeeks || assignedProgram.durationWeeks) || 8,
+            PhasesJSON: assignedProgram.PhasesJSON,
+            phasesJSON: assignedProgram.phasesJSON,
+            phases: assignedProgram.phases,
+            days: assignedProgram.days || [],
+          }}
+          allExercises={allExercises}
+          onClose={() => setShowEditProgram(false)}
+          onSave={async ({ id, name, description, goal, daysPerWeek, durationWeeks,
+            level, equipment, focusAreas, days, phases, sessionDuration, trainingType }) => {
+            const clientProgId = `prog-${client.ClientID}`;
+            const rowData = {
+              ProgramID: clientProgId,
+              Name: name,
+              Description: description,
+              Goal: goal,
+              DaysPerWeek: daysPerWeek,
+              DurationWeeks: durationWeeks,
+              Level: level,
+              Equipment: Array.isArray(equipment) ? equipment.join(', ') : equipment,
+              FocusAreas: Array.isArray(focusAreas) ? focusAreas.join(', ') : focusAreas,
+              SessionDuration: sessionDuration || 60,
+              TrainingType: trainingType || 'Hypertrophy',
+              DaysJSON: JSON.stringify(days),
+              PhasesJSON: JSON.stringify(phases),
+            };
+            await upsertRow('Programs', 'ProgramID', clientProgId, rowData);
+            // Point client to their custom program copy
+            await upsertRow('Clients', 'ClientID', client.ClientID, { ...client, ProgramID: clientProgId });
+            // Update local state
+            const parsedPhases = phases;
+            setAssignedProgram({ ...rowData, id: clientProgId, name, description, goal,
+              daysPerWeek, durationWeeks, level,
+              equipment: Array.isArray(equipment) ? equipment : equipment.split(',').map(s=>s.trim()),
+              focusAreas: Array.isArray(focusAreas) ? focusAreas : focusAreas.split(',').map(s=>s.trim()),
+              days, phases: parsedPhases, sessionDuration, trainingType });
+            setShowEditProgram(false);
+          }}
+        />
       )}
     </>
   );
