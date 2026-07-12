@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { readSheet, appendToSheet, upsertRow } from '../../utils/sheets';
 
@@ -1429,24 +1429,61 @@ function ActiveWorkout({ session, exercises, sets, adjustments, preData,
         );
       })}
 
-      {/* Exercise cards */}
-      {exercises.map(ex => (
-        <ExerciseCard key={ex.name}
-          exercise={ex}
-          sets={sets[ex.name]||[]}
-          onUpdateSet={(idx,s)=>onUpdateSet(ex.name,idx,s)}
-          isFlagged={!!(injuredMuscles && (ex.muscleGroup||'').toLowerCase().includes(injuredMuscles.split(' ')[0]))}
-          soreWarning={sorenessMuscles.includes((ex.muscleGroup||'').toLowerCase())}
-          niggleFlag={!!niggleFlags[ex.name]}
-          libraryEx={allExercises.find(e => {
-              const a = (e.Name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-              const b = (ex.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
-              return a === b || a.includes(b) || b.includes(a);
-            })}
-          onSwap={(newExLib) => onSwapExercise && onSwapExercise(ex, newExLib)}
-          allExercises={allExercises}
-        />
-      ))}
+      {/* Exercise cards — superset-aware */}
+      {(() => {
+        const SS_COLORS = ['#f97316','#60a5fa','#4ade80','#a78bfa','#f87171','#fbbf24'];
+        const ssIds = [];
+        exercises.forEach(ex => { if (ex.supersetId && !ssIds.includes(ex.supersetId)) ssIds.push(ex.supersetId); });
+        const ssLabel = id => { const i = ssIds.indexOf(id); return i >= 0 ? 'ABCDEFGHIJ'[i] ?? String(i+1) : ''; };
+        const ssColor = id => SS_COLORS[ssIds.indexOf(id) % SS_COLORS.length];
+        const seenSS = new Set();
+        return exercises.map(ex => {
+          const isFirstSS = ex.supersetId && !seenSS.has(ex.supersetId);
+          if (ex.supersetId) seenSS.add(ex.supersetId);
+          const isLastSS = ex.supersetId &&
+            exercises[exercises.indexOf(ex) + 1]?.supersetId !== ex.supersetId;
+          const color = ex.supersetId ? ssColor(ex.supersetId) : null;
+          const label = ex.supersetId ? ssLabel(ex.supersetId) : null;
+          return (
+            <React.Fragment key={ex.name}>
+              {isFirstSS && (
+                <div style={{ display:'flex', alignItems:'center', gap:'8px',
+                  padding:'7px 14px', marginTop:'8px', marginBottom:'2px',
+                  background:`${color}15`, borderLeft:`3px solid ${color}`,
+                  borderRadius:'0 10px 0 0' }}>
+                  <span style={{ fontSize:'11px', fontWeight:700, color, letterSpacing:'0.06em' }}>
+                    ⚡ SUPERSET {label}
+                  </span>
+                  <span style={{ fontSize:'11px', color:'var(--text-secondary, #94a3b8)' }}>
+                    Complete all exercises back-to-back, then rest
+                  </span>
+                </div>
+              )}
+              <div style={ex.supersetId ? {
+                borderLeft:`3px solid ${color}`,
+                borderRadius:'0 12px 12px 0',
+                marginBottom: isLastSS ? '12px' : '2px',
+              } : {}}>
+                <ExerciseCard
+                  exercise={ex}
+                  sets={sets[ex.name]||[]}
+                  onUpdateSet={(idx,s)=>onUpdateSet(ex.name,idx,s)}
+                  isFlagged={!!(injuredMuscles && (ex.muscleGroup||'').toLowerCase().includes(injuredMuscles.split(' ')[0]))}
+                  soreWarning={sorenessMuscles.includes((ex.muscleGroup||'').toLowerCase())}
+                  niggleFlag={!!niggleFlags[ex.name]}
+                  libraryEx={allExercises.find(e => {
+                      const a = (e.Name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+                      const b = (ex.name||'').toLowerCase().replace(/[^a-z0-9]/g,'');
+                      return a === b || a.includes(b) || b.includes(a);
+                    })}
+                  onSwap={(newExLib) => onSwapExercise && onSwapExercise(ex, newExLib)}
+                  allExercises={allExercises}
+                />
+              </div>
+            </React.Fragment>
+          );
+        });
+      })()}
 
       {/* Add exercise */}
       {showAddEx ? (

@@ -897,7 +897,7 @@ function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
 
 
 // ─── ExerciseRow (drag + reorder + sets/reps/rest + alternatives) ─────────────
-function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercises }) {
+function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercises, onCreateSuperset, onRemoveFromSuperset, supersetLabel, supersetColor, isLastInSuperset }) {
   const [showAlt, setShowAlt] = useState(false);
   const dragRef = useRef(null);
 
@@ -913,8 +913,10 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
       onDragStart={e => { e.dataTransfer.setData('text/plain', String(index)); e.dataTransfer.effectAllowed = 'move'; }}
       onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
       onDrop={e => { e.preventDefault(); const from = +e.dataTransfer.getData('text/plain'); onMove(from, index); }}
-      style={{ background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.08)',
-        borderRadius:'10px', marginBottom:'8px', overflow:'hidden' }}>
+      style={{ background:'rgba(255,255,255,0.04)',
+        border: ex.supersetId ? `1px solid ${supersetColor}44` : '1px solid rgba(255,255,255,0.08)',
+        borderLeft: ex.supersetId ? `3px solid ${supersetColor}` : '1px solid rgba(255,255,255,0.08)',
+        borderRadius:'10px', marginBottom: isLastInSuperset ? '10px' : '2px', overflow:'hidden' }}>
       <div style={{ padding:'10px 12px', display:'flex', alignItems:'center', gap:'10px' }}>
         {/* drag handle */}
         <span style={{ color:'#334155', fontSize:'16px', cursor:'grab', userSelect:'none',
@@ -927,8 +929,16 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
         </span>
         {/* name + muscle */}
         <div style={{ flex:1, minWidth:0 }}>
-          <div title={ex.name} style={{ color:'#f1f5f9', fontSize:'13px', fontWeight:500,
-            wordBreak:'break-word', lineHeight:1.3 }}>{ex.name}</div>
+          <div style={{ display:'flex', alignItems:'center', gap:'5px' }}>
+            <div title={ex.name} style={{ color:'#f1f5f9', fontSize:'13px', fontWeight:500,
+              wordBreak:'break-word', lineHeight:1.3 }}>{ex.name}</div>
+            {ex.supersetId && (
+              <span style={{ fontSize:'9px', fontWeight:700, padding:'1px 5px', borderRadius:'3px', flexShrink:0,
+                background: `${supersetColor}25`, color: supersetColor, letterSpacing:'0.05em' }}>
+                SS {supersetLabel}
+              </span>
+            )}
+          </div>
           {ex.muscleGroup && <div style={{ color:'#64748b', fontSize:'11px' }}>{ex.muscleGroup}</div>}
         </div>
         {/* sets / reps / rest */}
@@ -962,6 +972,15 @@ function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercise
             title="Alternatives"
             style={{ background:'none', border:'none', color: showAlt ? '#f97316' : '#64748b',
               fontSize:'14px', cursor:'pointer', padding:'4px' }}>⇄</button>
+          <button
+            onClick={() => ex.supersetId ? onRemoveFromSuperset(index) : onCreateSuperset(index)}
+            title={ex.supersetId ? `Unlink from Superset ${supersetLabel}` : (index < total - 1 ? 'Link with next exercise (superset)' : 'No exercise below to link')}
+            disabled={!ex.supersetId && index >= total - 1}
+            style={{ background:'none', border:'none', padding:'4px', fontSize:'14px',
+              cursor: (ex.supersetId || index < total - 1) ? 'pointer' : 'default',
+              color: ex.supersetId ? supersetColor : index < total - 1 ? '#475569' : '#1e293b',
+              opacity: (!ex.supersetId && index >= total - 1) ? 0.3 : 1,
+            }}>🔗</button>
           <button onClick={() => onRemove(index)}
             style={{ background:'none', border:'none', color:'#64748b',
               fontSize:'14px', cursor:'pointer', padding:'4px' }}>✕</button>
@@ -1065,6 +1084,7 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
       id: generateId('exrow'), exerciseId: ex.ExerciseID,
       name: ex.Name, muscleGroup: ex.PrimaryMuscle || '',
       sets: 3, reps: '8-10', rest: '60s', weightIncrement: 2.5, notes: '',
+      supersetId: null,
     };
     const next = [...days];
     next[activeDay] = { ...day, exercises: [...exercises, newEx] };
@@ -1108,6 +1128,56 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
     next[activeDay] = { ...day, exercises: exArr };
     updatePhasesDays(next);
     setLastDeleted(null);
+  };
+
+  // ── Superset helpers ──────────────────────────────────────────────────────
+  const SUPERSET_COLORS = ['#f97316','#60a5fa','#4ade80','#a78bfa','#f87171','#fbbf24'];
+  const getSupersetIdx = (ssId, exs) => {
+    const ids = [];
+    exs.forEach(e => { if (e.supersetId && !ids.includes(e.supersetId)) ids.push(e.supersetId); });
+    return ids.indexOf(ssId);
+  };
+  const getSupersetLabel = (ssId) => {
+    const i = getSupersetIdx(ssId, exercises);
+    return i >= 0 ? 'ABCDEFGHIJ'[i] ?? String(i+1) : '?';
+  };
+  const getSupersetColor = (ssId) => {
+    const i = getSupersetIdx(ssId, exercises);
+    return SUPERSET_COLORS[i % SUPERSET_COLORS.length];
+  };
+  const createSuperset = (idx) => {
+    if (idx >= exercises.length - 1) return;
+    const curr = exercises[idx];
+    const next2 = exercises[idx + 1];
+    // If next is already in a superset, join it
+    if (next2.supersetId && !curr.supersetId) {
+      const exArr = exercises.map((e, i) => i === idx ? { ...e, supersetId: next2.supersetId } : e);
+      const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
+      return updatePhasesDays(nxt);
+    }
+    // If current is already in a superset, add next to it
+    if (curr.supersetId && !next2.supersetId) {
+      const exArr = exercises.map((e, i) => i === idx+1 ? { ...e, supersetId: curr.supersetId } : e);
+      const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
+      return updatePhasesDays(nxt);
+    }
+    // Both standalone or both different supersets: create new
+    const ssId = `ss-${Date.now()}`;
+    const exArr = exercises.map((e, i) => (i === idx || i === idx+1) ? { ...e, supersetId: ssId } : e);
+    const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
+    updatePhasesDays(nxt);
+  };
+  const removeFromSuperset = (idx) => {
+    const ssId = exercises[idx]?.supersetId; if (!ssId) return;
+    const members = exercises.filter(e => e.supersetId === ssId);
+    const exArr = exercises.map((e, i) => {
+      if (i === idx) return { ...e, supersetId: null };
+      // If only 2 in group, dissolve the other one too
+      if (e.supersetId === ssId && members.length === 2) return { ...e, supersetId: null };
+      return e;
+    });
+    const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
+    updatePhasesDays(nxt);
   };
 
   const uniqueMuscles = ['All', ...new Set(allExercises.map(e => e.PrimaryMuscle).filter(Boolean))];
@@ -1237,11 +1307,40 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
                     <div style={{ fontSize:'28px' }}>💪</div>
                     <div style={{ fontSize:'13px' }}>Search and click exercises on the left to add them here</div>
                   </div>
-                ) : exercises.map((ex, i) => (
-                  <ExerciseRow key={ex.id} ex={ex} index={i} total={exercises.length}
-                    onMove={moveExercise} onUpdate={updateExercise} onRemove={removeExercise}
-                    allExercises={allExercises} />
-                ))}
+                ) : (() => {
+                  const seenSS = new Set();
+                  return exercises.map((ex, i) => {
+                    const ssLabel = ex.supersetId ? getSupersetLabel(ex.supersetId) : null;
+                    const ssColor = ex.supersetId ? getSupersetColor(ex.supersetId) : null;
+                    const isFirst = ex.supersetId && !seenSS.has(ex.supersetId);
+                    if (ex.supersetId) seenSS.add(ex.supersetId);
+                    const isLast = ex.supersetId &&
+                      (i === exercises.length - 1 || exercises[i+1]?.supersetId !== ex.supersetId);
+                    return (
+                      <React.Fragment key={ex.id}>
+                        {isFirst && (
+                          <div style={{ display:'flex', alignItems:'center', gap:'6px',
+                            padding:'5px 10px 3px', marginTop:'6px',
+                            borderLeft:`3px solid ${ssColor}`, background:`${ssColor}10`,
+                            borderRadius:'0 6px 0 0' }}>
+                            <span style={{ fontSize:'10px', fontWeight:700, color: ssColor,
+                              letterSpacing:'0.06em', textTransform:'uppercase' }}>
+                              ⚡ Superset {ssLabel}
+                            </span>
+                            <span style={{ fontSize:'10px', color:'#475569' }}>
+                              — do all exercises back-to-back, then rest
+                            </span>
+                          </div>
+                        )}
+                        <ExerciseRow ex={ex} index={i} total={exercises.length}
+                          onMove={moveExercise} onUpdate={updateExercise} onRemove={removeExercise}
+                          onCreateSuperset={createSuperset} onRemoveFromSuperset={removeFromSuperset}
+                          supersetLabel={ssLabel} supersetColor={ssColor} isLastInSuperset={isLast}
+                          allExercises={allExercises} />
+                      </React.Fragment>
+                    );
+                  });
+                })()}
               </div>
             </>
           )}
