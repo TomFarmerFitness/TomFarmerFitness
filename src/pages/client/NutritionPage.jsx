@@ -692,7 +692,7 @@ function scaleNutrition(food, grams) {
   };
 }
 
-function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMealType = false, savedMeals = [], onLogMeal = null }) {
+function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMealType = false, savedMeals = [], onLogMeal = null, yesterdayItems = [] }) {
   const overlayRef = useRef(null);
   const sheetRef   = useRef(null);
 
@@ -952,6 +952,32 @@ function AddFoodModal({ initialMealType, clientTargets, onSave, onClose, hideMea
             ) : step === 'search' ? (
               /* ── SEARCH STEP ── */
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+
+                {/* ── Yesterday quick-add section ── */}
+                {!hideMealType && yesterdayItems.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 8 }}>
+                      ↩ Yesterday's {mealType}
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {yesterdayItems.map((item, i) => (
+                        <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 10, background: 'var(--surface-secondary, #1a1a1a)', border: '1px solid var(--border, #333)' }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{item.foodName}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>
+                              {item.servingG}g · {Math.round(item.calories)} kcal · P {Math.round(item.protein)}g · C {Math.round(item.carbs)}g · F {Math.round(item.fats)}g
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => onSave({ foodName: item.foodName, mealType, servingG: item.servingG, calories: item.calories, protein: item.protein, carbs: item.carbs, fats: item.fats, fibre: item.fibre || 0, micronutrients: item.micronutrients || null })}
+                            style={{ flexShrink: 0, marginLeft: 10, width: 32, height: 32, borderRadius: '50%', border: 'none', background: '#22c55e', color: '#000', fontSize: 20, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1 }}
+                          >+</button>
+                        </div>
+                      ))}
+                    </div>
+                    {savedMeals.length > 0 && <div style={{ height: 1, background: 'var(--border, #2a2a2a)', margin: '6px 0 2px' }} />}
+                  </div>
+                )}
 
                 {/* ── My Meals quick-log section ── */}
                 {!hideMealType && savedMeals.length > 0 && onLogMeal && (
@@ -1936,6 +1962,9 @@ export default function NutritionPage() {
             }
             setShowAddFood(false);
           }}
+          yesterdayItems={nutritionRows.filter(r =>
+            r.date === addDays(selectedDate, -1) && r.mealType === addFoodMeal
+          )}
         />
       )}
 
