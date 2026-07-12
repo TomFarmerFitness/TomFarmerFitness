@@ -339,10 +339,10 @@ export default function TodayPage() {
   }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
 
   const targets = {
-    calories: parseInt(clientProfile?.CalorieTarget) || 2000,
-    protein:  parseInt(clientProfile?.ProteinTarget) || 150,
-    carbs:    parseInt(clientProfile?.CarbsTarget)   || 220,
-    fats:     parseInt(clientProfile?.FatsTarget)    || 65,
+    calories: parseFloat(clientProfile?.DailyCalories)  || 2000,
+    protein:  parseFloat(clientProfile?.ProteinTarget)  || 150,
+    carbs:    parseFloat(clientProfile?.CarbTarget)     || 220,
+    fats:     parseFloat(clientProfile?.FatTarget)      || 65,
   };
 
   const inputStyle = {
