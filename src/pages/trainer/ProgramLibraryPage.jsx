@@ -1145,37 +1145,45 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
     const i = getSupersetIdx(ssId, exercises);
     return SUPERSET_COLORS[i % SUPERSET_COLORS.length];
   };
+  // After any superset change: clear rest on every non-last superset member,
+  // leave rest on the last member (that's the between-round rest).
+  const applyRestRules = (exArr) => exArr.map((ex, i) => {
+    if (!ex.supersetId) return ex;
+    const isLast = i === exArr.length - 1 || exArr[i + 1]?.supersetId !== ex.supersetId;
+    return isLast ? ex : { ...ex, rest: '—' };
+  });
+
   const createSuperset = (idx) => {
     if (idx >= exercises.length - 1) return;
     const curr = exercises[idx];
     const next2 = exercises[idx + 1];
-    // If next is already in a superset, join it
+    let exArr;
+    // If next is already in a superset, join current to it
     if (next2.supersetId && !curr.supersetId) {
-      const exArr = exercises.map((e, i) => i === idx ? { ...e, supersetId: next2.supersetId } : e);
-      const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
-      return updatePhasesDays(nxt);
-    }
+      exArr = exercises.map((e, i) => i === idx ? { ...e, supersetId: next2.supersetId } : e);
     // If current is already in a superset, add next to it
-    if (curr.supersetId && !next2.supersetId) {
-      const exArr = exercises.map((e, i) => i === idx+1 ? { ...e, supersetId: curr.supersetId } : e);
-      const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
-      return updatePhasesDays(nxt);
+    } else if (curr.supersetId && !next2.supersetId) {
+      exArr = exercises.map((e, i) => i === idx + 1 ? { ...e, supersetId: curr.supersetId } : e);
+    } else {
+      // Both standalone (or different supersets): create new group
+      const ssId = `ss-${Date.now()}`;
+      exArr = exercises.map((e, i) => (i === idx || i === idx + 1) ? { ...e, supersetId: ssId } : e);
     }
-    // Both standalone or both different supersets: create new
-    const ssId = `ss-${Date.now()}`;
-    const exArr = exercises.map((e, i) => (i === idx || i === idx+1) ? { ...e, supersetId: ssId } : e);
+    exArr = applyRestRules(exArr);
     const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
     updatePhasesDays(nxt);
   };
+
   const removeFromSuperset = (idx) => {
     const ssId = exercises[idx]?.supersetId; if (!ssId) return;
     const members = exercises.filter(e => e.supersetId === ssId);
-    const exArr = exercises.map((e, i) => {
+    let exArr = exercises.map((e, i) => {
       if (i === idx) return { ...e, supersetId: null };
-      // If only 2 in group, dissolve the other one too
       if (e.supersetId === ssId && members.length === 2) return { ...e, supersetId: null };
       return e;
     });
+    // Re-apply rest rules so the new last member keeps its rest correct
+    exArr = applyRestRules(exArr);
     const nxt = [...days]; nxt[activeDay] = { ...day, exercises: exArr };
     updatePhasesDays(nxt);
   };
