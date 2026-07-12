@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { readSheet, appendToSheet, upsertRow, invalidateCache } from '../../utils/sheets';
 import config from '../../config';
 
