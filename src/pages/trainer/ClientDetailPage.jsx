@@ -537,7 +537,7 @@ export default function ClientDetailPage() {
   const [showTDEE,      setShowTDEE]      = useState(false);
   const [tdeeForm,      setTdeeForm]      = useState({ sex: 'male', age: '', weight: '', height: '', activity: '1.55', goal: 'lose_moderate' });
   const [showProfileEdit, setShowProfileEdit] = useState(false);
-  const [profileEditForm, setProfileEditForm] = useState({ age: '', targetWeight: '', trainingDaysPerWeek: '', trainingDays: [], accessUntil: '' });
+  const [profileEditForm, setProfileEditForm] = useState({ height: '', currentWeight: '', gender: 'Male', goal: 'General Fitness', age: '', targetWeight: '', equipment: [], injuries: '', notes: '', trainingDaysPerWeek: '', trainingDays: [], accessUntil: '' });
   const [profileEditSaving, setProfileEditSaving] = useState(false);
   const [statusSaving,  setStatusSaving]  = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -934,8 +934,15 @@ export default function ClientDetailPage() {
                       ? client.TrainingDays.split(',').map(d => d.trim()).filter(Boolean)
                       : [];
                     setProfileEditForm({
+                      height: client.Height || '',
+                      currentWeight: currentWeight || client.CurrentWeight || '',
+                      gender: client.Gender || 'Male',
+                      goal: client.Goal || 'General Fitness',
                       age: client.Age || '',
                       targetWeight: client.TargetWeight || '',
+                      equipment: client.Equipment ? client.Equipment.split(',').map(e => e.trim()).filter(Boolean) : [],
+                      injuries: client.Injuries || '',
+                      notes: client.Notes || '',
                       trainingDaysPerWeek: client.TrainingDaysPerWeek || '',
                       trainingDays: days,
                       accessUntil: client.AccessUntil || '',
@@ -1461,71 +1468,152 @@ export default function ClientDetailPage() {
       {showProfileEdit && (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:1000,
           display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
-          <div style={{ background:'#1e293b', borderRadius:'14px', width:'100%', maxWidth:'420px',
-            display:'flex', flexDirection:'column', overflow:'hidden', maxHeight:'90vh' }}>
+          <div style={{ background:'#1e293b', borderRadius:'14px', width:'100%', maxWidth:'460px',
+            display:'flex', flexDirection:'column', overflow:'hidden', maxHeight:'92vh' }}>
+
+            {/* Header */}
             <div style={{ padding:'18px 20px 14px', borderBottom:'1px solid rgba(255,255,255,0.08)',
-              display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
               <div style={{ color:'#f1f5f9', fontWeight:700, fontSize:'15px' }}>Edit Client Profile</div>
               <button onClick={() => setShowProfileEdit(false)}
                 style={{ background:'none', border:'none', color:'#64748b', fontSize:'22px',
                   cursor:'pointer', lineHeight:1, padding:'4px' }}>×</button>
             </div>
+
+            {/* Scrollable body */}
             <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'14px', overflowY:'auto' }}>
-              {/* Age */}
-              <div>
-                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
-                  marginBottom:'5px', display:'block' }}>AGE (YEARS)</label>
-                <input type='number' min={1} max={120} value={profileEditForm.age}
-                  onChange={e => setProfileEditForm(f => ({ ...f, age: e.target.value }))}
-                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
-                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
-                    color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+
+              {/* Row: Height + Current Weight */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                <div>
+                  <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>HEIGHT (CM)</label>
+                  <input type='number' min={100} max={250} value={profileEditForm.height}
+                    onChange={e => setProfileEditForm(f => ({ ...f, height: e.target.value }))}
+                    style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                      borderRadius:'8px', color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>CURRENT WEIGHT (KG)</label>
+                  <input type='number' min={30} max={300} step={0.1} value={profileEditForm.currentWeight}
+                    onChange={e => setProfileEditForm(f => ({ ...f, currentWeight: e.target.value }))}
+                    style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                      borderRadius:'8px', color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+                </div>
               </div>
-              {/* Target Weight */}
-              <div>
-                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
-                  marginBottom:'5px', display:'block' }}>TARGET WEIGHT (KG)</label>
-                <input type='number' min={30} max={300} step={0.1} value={profileEditForm.targetWeight}
-                  onChange={e => setProfileEditForm(f => ({ ...f, targetWeight: e.target.value }))}
-                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
-                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
-                    color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+
+              {/* Row: Age + Target Weight */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                <div>
+                  <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>AGE (YEARS)</label>
+                  <input type='number' min={1} max={120} value={profileEditForm.age}
+                    onChange={e => setProfileEditForm(f => ({ ...f, age: e.target.value }))}
+                    style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                      borderRadius:'8px', color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+                </div>
+                <div>
+                  <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>TARGET WEIGHT (KG)</label>
+                  <input type='number' min={30} max={300} step={0.1} value={profileEditForm.targetWeight}
+                    onChange={e => setProfileEditForm(f => ({ ...f, targetWeight: e.target.value }))}
+                    style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                      borderRadius:'8px', color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+                </div>
               </div>
+
+              {/* Row: Gender + Goal */}
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px' }}>
+                <div>
+                  <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>GENDER</label>
+                  <select value={profileEditForm.gender}
+                    onChange={e => setProfileEditForm(f => ({ ...f, gender: e.target.value }))}
+                    style={{ width:'100%', background:'#0f172a', border:'1px solid rgba(255,255,255,0.1)',
+                      borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'10px 12px', boxSizing:'border-box' }}>
+                    <option>Male</option>
+                    <option>Female</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>GOAL</label>
+                  <select value={profileEditForm.goal}
+                    onChange={e => setProfileEditForm(f => ({ ...f, goal: e.target.value }))}
+                    style={{ width:'100%', background:'#0f172a', border:'1px solid rgba(255,255,255,0.1)',
+                      borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'10px 12px', boxSizing:'border-box' }}>
+                    {['Weight Loss','Fat Loss','Muscle Gain','General Fitness','Strength'].map(g => (
+                      <option key={g}>{g}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Equipment */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'8px', display:'block' }}>EQUIPMENT ACCESS</label>
+                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                  {['Full Gym','Home Gym','Minimal','Bodyweight Only'].map(eq => {
+                    const active = profileEditForm.equipment.includes(eq);
+                    return (
+                      <button key={eq} onClick={() => setProfileEditForm(f => ({
+                        ...f,
+                        equipment: active ? f.equipment.filter(e => e !== eq) : [...f.equipment, eq],
+                      }))} style={{ padding:'7px 12px', borderRadius:'8px', border:'none', cursor:'pointer',
+                        background: active ? '#f97316' : 'rgba(255,255,255,0.06)',
+                        color: active ? '#fff' : '#64748b', fontSize:'12px', fontWeight: active ? 700 : 400 }}>
+                        {eq}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Training days per week */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>TRAINING DAYS PER WEEK</label>
+                <input type='number' min={1} max={7} value={profileEditForm.trainingDaysPerWeek}
+                  onChange={e => setProfileEditForm(f => ({ ...f, trainingDaysPerWeek: e.target.value }))}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                    borderRadius:'8px', color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+              </div>
+
+              {/* Specific training days */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'8px', display:'block' }}>TRAINING DAYS</label>
+                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                  {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => {
+                    const active = profileEditForm.trainingDays.includes(day);
+                    return (
+                      <button key={day} onClick={() => setProfileEditForm(f => ({
+                        ...f,
+                        trainingDays: active ? f.trainingDays.filter(d => d !== day) : [...f.trainingDays, day],
+                      }))} style={{ padding:'8px 11px', borderRadius:'8px', border:'none', cursor:'pointer',
+                        background: active ? '#f97316' : 'rgba(255,255,255,0.06)',
+                        color: active ? '#fff' : '#64748b', fontSize:'13px', fontWeight: active ? 700 : 400 }}>
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* Access Until */}
               <div>
-                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
-                  marginBottom:'5px', display:'block' }}>ACCESS UNTIL (LEAVE BLANK FOR ONGOING)</label>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>ACCESS UNTIL (BLANK = ONGOING)</label>
                 <input type='date' value={profileEditForm.accessUntil}
                   onChange={e => setProfileEditForm(f => ({ ...f, accessUntil: e.target.value }))}
-                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
-                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
-                    color: profileEditForm.accessUntil ? '#f1f5f9' : '#64748b',
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                    borderRadius:'8px', color: profileEditForm.accessUntil ? '#f1f5f9' : '#64748b',
                     fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
                 {profileEditForm.accessUntil && (() => {
-                  const exp = new Date(profileEditForm.accessUntil + 'T23:59:59');
-                  const now = new Date();
-                  const daysLeft = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
-                  const expired = daysLeft < 0;
+                  const daysLeft = Math.ceil((new Date(profileEditForm.accessUntil + 'T23:59:59') - new Date()) / 86400000);
                   return (
                     <div style={{ fontSize:'11px', marginTop:'4px',
-                      color: expired ? '#f87171' : daysLeft <= 7 ? '#fbbf24' : '#4ade80' }}>
-                      {expired ? `Expired ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? 's' : ''} ago`
-                        : daysLeft === 0 ? 'Expires today'
-                        : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining`}
+                      color: daysLeft < 0 ? '#f87171' : daysLeft <= 7 ? '#fbbf24' : '#4ade80' }}>
+                      {daysLeft < 0 ? `Expired ${Math.abs(daysLeft)}d ago` : daysLeft === 0 ? 'Expires today' : `${daysLeft} days remaining`}
                     </div>
                   );
                 })()}
                 <div style={{ display:'flex', gap:'6px', marginTop:'6px', flexWrap:'wrap' }}>
-                  {[
-                    { label: '+1 month',  days: 30 },
-                    { label: '+3 months', days: 90 },
-                    { label: '+6 months', days: 180 },
-                    { label: '+1 year',   days: 365 },
-                  ].map(({ label, days }) => (
+                  {[{label:'+1 mo',days:30},{label:'+3 mo',days:90},{label:'+6 mo',days:180},{label:'+1 yr',days:365}].map(({label,days}) => (
                     <button key={label} onClick={() => {
-                      const base = profileEditForm.accessUntil
-                        ? new Date(profileEditForm.accessUntil + 'T12:00:00')
-                        : new Date();
+                      const base = profileEditForm.accessUntil ? new Date(profileEditForm.accessUntil + 'T12:00:00') : new Date();
                       base.setDate(base.getDate() + days);
                       setProfileEditForm(f => ({ ...f, accessUntil: base.toISOString().slice(0,10) }));
                     }} style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
@@ -1535,54 +1623,37 @@ export default function ClientDetailPage() {
                   ))}
                   <button onClick={() => setProfileEditForm(f => ({ ...f, accessUntil: '' }))}
                     style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
-                      background:'rgba(255,255,255,0.05)', color:'#64748b', fontSize:'11px' }}>
-                    Clear
-                  </button>
+                      background:'rgba(255,255,255,0.05)', color:'#64748b', fontSize:'11px' }}>Clear</button>
                 </div>
               </div>
-              {/* Training days per week */}
+
+              {/* Injuries */}
               <div>
-                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
-                  marginBottom:'5px', display:'block' }}>TRAINING DAYS PER WEEK</label>
-                <input type='number' min={1} max={7} value={profileEditForm.trainingDaysPerWeek}
-                  onChange={e => setProfileEditForm(f => ({ ...f, trainingDaysPerWeek: e.target.value }))}
-                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
-                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
-                    color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>INJURIES / LIMITATIONS</label>
+                <textarea value={profileEditForm.injuries} rows={2}
+                  onChange={e => setProfileEditForm(f => ({ ...f, injuries: e.target.value }))}
+                  placeholder="None"
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                    borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'10px 12px',
+                    boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
               </div>
-              {/* Specific training days */}
+
+              {/* Notes */}
               <div>
-                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
-                  marginBottom:'8px', display:'block' }}>TRAINING DAYS</label>
-                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
-                  {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => {
-                    const active = profileEditForm.trainingDays.includes(day);
-                    return (
-                      <button key={day} onClick={() => setProfileEditForm(f => ({
-                        ...f,
-                        trainingDays: active
-                          ? f.trainingDays.filter(d => d !== day)
-                          : [...f.trainingDays, day],
-                      }))}
-                      style={{ padding:'8px 12px', borderRadius:'8px', border:'none', cursor:'pointer',
-                        background: active ? '#f97316' : 'rgba(255,255,255,0.06)',
-                        color: active ? '#fff' : '#64748b',
-                        fontSize:'13px', fontWeight: active ? 700 : 400,
-                        transition:'background 0.15s, color 0.15s' }}>
-                        {day}
-                      </button>
-                    );
-                  })}
-                </div>
-                <div style={{ fontSize:'11px', color:'#475569', marginTop:'6px' }}>
-                  {profileEditForm.trainingDays.length > 0
-                    ? `${profileEditForm.trainingDays.length} day${profileEditForm.trainingDays.length !== 1 ? 's' : ''} selected`
-                    : 'No specific days set'}
-                </div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em', marginBottom:'5px', display:'block' }}>NOTES</label>
+                <textarea value={profileEditForm.notes} rows={2}
+                  onChange={e => setProfileEditForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="—"
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                    borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'10px 12px',
+                    boxSizing:'border-box', resize:'vertical', fontFamily:'inherit' }} />
               </div>
-            </div>
+
+            </div>{/* end scrollable body */}
+
+            {/* Footer */}
             <div style={{ padding:'14px 20px', borderTop:'1px solid rgba(255,255,255,0.08)',
-              display:'flex', gap:'10px' }}>
+              display:'flex', gap:'10px', flexShrink:0 }}>
               <button onClick={() => setShowProfileEdit(false)}
                 style={{ flex:1, padding:'11px', background:'rgba(255,255,255,0.06)',
                   border:'1px solid rgba(255,255,255,0.1)', borderRadius:'10px',
@@ -1592,11 +1663,18 @@ export default function ClientDetailPage() {
                 try {
                   const updatedClient = {
                     ...Object.fromEntries(Object.entries(client)),
-                    Age: profileEditForm.age,
-                    TargetWeight: profileEditForm.targetWeight,
+                    Height:             profileEditForm.height,
+                    CurrentWeight:      profileEditForm.currentWeight,
+                    Gender:             profileEditForm.gender,
+                    Goal:               profileEditForm.goal,
+                    Age:                profileEditForm.age,
+                    TargetWeight:       profileEditForm.targetWeight,
+                    Equipment:          profileEditForm.equipment.join(', '),
+                    Injuries:           profileEditForm.injuries,
+                    Notes:              profileEditForm.notes,
                     TrainingDaysPerWeek: profileEditForm.trainingDaysPerWeek,
-                    TrainingDays: profileEditForm.trainingDays.join(','),
-                    AccessUntil: profileEditForm.accessUntil,
+                    TrainingDays:       profileEditForm.trainingDays.join(','),
+                    AccessUntil:        profileEditForm.accessUntil,
                   };
                   await upsertRow('Clients', 'ClientID', client.ClientID, updatedClient);
                   setClient(updatedClient);
@@ -1606,17 +1684,18 @@ export default function ClientDetailPage() {
                 } finally {
                   setProfileEditSaving(false);
                 }
-              }}
-              style={{ flex:2, padding:'11px',
+              }} style={{ flex:2, padding:'11px',
                 background: profileEditSaving ? 'rgba(249,115,22,0.4)' : '#f97316',
                 border:'none', borderRadius:'10px', color:'#fff',
                 fontSize:'14px', fontWeight:600, cursor: profileEditSaving ? 'default' : 'pointer' }}>
                 {profileEditSaving ? 'Saving…' : '✓ Save Changes'}
               </button>
             </div>
+
           </div>
         </div>
       )}
+
 
       {/* ══════════════════ PROGRESS SECTION ══════════════════ */}
       {activeSection === 'progress' && (
