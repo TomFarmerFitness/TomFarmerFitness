@@ -537,7 +537,7 @@ export default function ClientDetailPage() {
   const [showTDEE,      setShowTDEE]      = useState(false);
   const [tdeeForm,      setTdeeForm]      = useState({ sex: 'male', age: '', weight: '', height: '', activity: '1.55', goal: 'lose_moderate' });
   const [showProfileEdit, setShowProfileEdit] = useState(false);
-  const [profileEditForm, setProfileEditForm] = useState({ age: '', targetWeight: '', trainingDaysPerWeek: '', trainingDays: [] });
+  const [profileEditForm, setProfileEditForm] = useState({ age: '', targetWeight: '', trainingDaysPerWeek: '', trainingDays: [], accessUntil: '' });
   const [profileEditSaving, setProfileEditSaving] = useState(false);
   const [statusSaving,  setStatusSaving]  = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -859,6 +859,7 @@ export default function ClientDetailPage() {
               { label: 'Height',         value: client.Height        ? `${client.Height} cm`         : '—', icon: '📏' },
               { label: 'Age',            value: client.Age           ? `${client.Age} yrs`           : '—', icon: '🎂' },
               { label: 'Training Days',  value: client.TrainingDaysPerWeek ? `${client.TrainingDaysPerWeek}×/week` : '—', icon: '🗓️' },
+              { label: 'Access Until',   value: client.AccessUntil ? format(new Date(client.AccessUntil + 'T12:00:00'), 'MMM d, yyyy') : 'Ongoing', icon: '🔑' },
               { label: 'Last Workout',   value: lastLog ? formatDistanceToNow(parseDate(lastLog.Date), { addSuffix: true }) : 'Not started', icon: '🏋️' },
             ].map(({ label, value, icon }) => (
               <div key={label} style={{ ...cardStyle, padding: '14px 16px' }}>
@@ -937,6 +938,7 @@ export default function ClientDetailPage() {
                       targetWeight: client.TargetWeight || '',
                       trainingDaysPerWeek: client.TrainingDaysPerWeek || '',
                       trainingDays: days,
+                      accessUntil: client.AccessUntil || '',
                     });
                     setShowProfileEdit(true);
                   }}
@@ -1489,6 +1491,55 @@ export default function ClientDetailPage() {
                     border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
                     color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
               </div>
+              {/* Access Until */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+                  marginBottom:'5px', display:'block' }}>ACCESS UNTIL (LEAVE BLANK FOR ONGOING)</label>
+                <input type='date' value={profileEditForm.accessUntil}
+                  onChange={e => setProfileEditForm(f => ({ ...f, accessUntil: e.target.value }))}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
+                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
+                    color: profileEditForm.accessUntil ? '#f1f5f9' : '#64748b',
+                    fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+                {profileEditForm.accessUntil && (() => {
+                  const exp = new Date(profileEditForm.accessUntil + 'T23:59:59');
+                  const now = new Date();
+                  const daysLeft = Math.ceil((exp - now) / (1000 * 60 * 60 * 24));
+                  const expired = daysLeft < 0;
+                  return (
+                    <div style={{ fontSize:'11px', marginTop:'4px',
+                      color: expired ? '#f87171' : daysLeft <= 7 ? '#fbbf24' : '#4ade80' }}>
+                      {expired ? `Expired ${Math.abs(daysLeft)} day${Math.abs(daysLeft) !== 1 ? 's' : ''} ago`
+                        : daysLeft === 0 ? 'Expires today'
+                        : `${daysLeft} day${daysLeft !== 1 ? 's' : ''} remaining`}
+                    </div>
+                  );
+                })()}
+                <div style={{ display:'flex', gap:'6px', marginTop:'6px', flexWrap:'wrap' }}>
+                  {[
+                    { label: '+1 month',  days: 30 },
+                    { label: '+3 months', days: 90 },
+                    { label: '+6 months', days: 180 },
+                    { label: '+1 year',   days: 365 },
+                  ].map(({ label, days }) => (
+                    <button key={label} onClick={() => {
+                      const base = profileEditForm.accessUntil
+                        ? new Date(profileEditForm.accessUntil + 'T12:00:00')
+                        : new Date();
+                      base.setDate(base.getDate() + days);
+                      setProfileEditForm(f => ({ ...f, accessUntil: base.toISOString().slice(0,10) }));
+                    }} style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                      background:'rgba(249,115,22,0.12)', color:'#f97316', fontSize:'11px', fontWeight:600 }}>
+                      {label}
+                    </button>
+                  ))}
+                  <button onClick={() => setProfileEditForm(f => ({ ...f, accessUntil: '' }))}
+                    style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                      background:'rgba(255,255,255,0.05)', color:'#64748b', fontSize:'11px' }}>
+                    Clear
+                  </button>
+                </div>
+              </div>
               {/* Training days per week */}
               <div>
                 <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
@@ -1545,6 +1596,7 @@ export default function ClientDetailPage() {
                     TargetWeight: profileEditForm.targetWeight,
                     TrainingDaysPerWeek: profileEditForm.trainingDaysPerWeek,
                     TrainingDays: profileEditForm.trainingDays.join(','),
+                    AccessUntil: profileEditForm.accessUntil,
                   };
                   await upsertRow('Clients', 'ClientID', client.ClientID, updatedClient);
                   setClient(updatedClient);

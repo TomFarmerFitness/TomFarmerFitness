@@ -19,6 +19,7 @@ const EMPTY = {
   name: '', email: '', password: '',
   gender: 'Male', age: '', goal: 'General Fitness',
   startDate: new Date().toISOString().slice(0,10),
+  accessUntil: '',
   currentWeight: '', targetWeight: '', height: '',
   goalTimeframe: '',
   trainingDaysPerWeek: '3', equipment: [],
@@ -212,6 +213,7 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
         Notes:               form.notes.trim(),
         ProgramID:           form.programId,
         GoalTimeframe:       form.goalTimeframe,
+        AccessUntil:         form.accessUntil,
         DailyCalories:       macros?.calories ?? '',
         ProteinTarget:       macros?.protein  ?? '',
         CarbTarget:          macros?.carbs    ?? '',
@@ -320,6 +322,30 @@ export default function OnboardClientForm({ programs = [], onClose, onSuccess })
             <div>
               <FieldLabel required>Start Date</FieldLabel>
               <Input type="date" value={form.startDate} onChange={e => set('startDate', e.target.value)} required />
+            </div>
+            <div>
+              <FieldLabel>Access Until (subscription end date)</FieldLabel>
+              <Input type="date" value={form.accessUntil} onChange={e => set('accessUntil', e.target.value)} />
+              <div style={{ display:'flex', gap:'6px', marginTop:'6px', flexWrap:'wrap' }}>
+                {[
+                  { label: '+1 month',  days: 30 },
+                  { label: '+3 months', days: 90 },
+                  { label: '+6 months', days: 180 },
+                  { label: '+1 year',   days: 365 },
+                ].map(({ label, days }) => (
+                  <button key={label} type="button" onClick={() => {
+                    const base = form.startDate ? new Date(form.startDate + 'T12:00:00') : new Date();
+                    base.setDate(base.getDate() + days);
+                    set('accessUntil', base.toISOString().slice(0,10));
+                  }} style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                    background:'rgba(249,115,22,0.12)', color:'#f97316', fontSize:'11px', fontWeight:600 }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize:'11px', color:'#64748b', marginTop:'4px' }}>
+                Leave blank for ongoing / rolling contracts
+              </div>
             </div>
           </div>
 

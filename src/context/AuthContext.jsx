@@ -46,7 +46,13 @@ function isSessionValid(session) {
   if (!session?.loggedInAt) return false;
   const expiresAt = new Date(session.loggedInAt);
   expiresAt.setDate(expiresAt.getDate() + SESSION_DAYS);
-  return new Date() < expiresAt;
+  if (new Date() >= expiresAt) return false;
+  // Enforce subscription expiry for clients
+  if (session.userType === 'client' && session.accessUntil) {
+    const accessExpiry = new Date(session.accessUntil + 'T23:59:59');
+    if (new Date() > accessExpiry) return false;
+  }
+  return true;
 }
 
 export function AuthProvider({ children }) {
@@ -135,6 +141,7 @@ export function AuthProvider({ children }) {
         email:        headers.indexOf('Email'),
         passwordHash: headers.indexOf('PasswordHash'),
         status:       headers.indexOf('Status'),
+        accessUntil:  headers.indexOf('AccessUntil'),
       };
 
       const match = rows.slice(1).find(row => {
@@ -145,11 +152,20 @@ export function AuthProvider({ children }) {
       });
 
       if (match) {
+        // Check subscription expiry before allowing login
+        const rowAccessUntil = idx.accessUntil >= 0 ? (match[idx.accessUntil] || '').trim() : '';
+        if (rowAccessUntil) {
+          const expiry = new Date(rowAccessUntil + 'T23:59:59');
+          if (new Date() > expiry) {
+            return { success: false, error: 'Your access has expired. Please contact your trainer to renew.' };
+          }
+        }
         const session = {
           userType: 'client',
           clientID: match[idx.clientID] || null,
           name: match[idx.name] || 'Client',
           email: match[idx.email],
+          accessUntil: rowAccessUntil || null,
           loggedInAt: new Date().toISOString(),
         };
         localStorage.setItem(SESSION_KEY, JSON.stringify(session));
