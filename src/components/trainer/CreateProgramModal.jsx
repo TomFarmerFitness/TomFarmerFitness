@@ -47,15 +47,17 @@ function countProgramExercises(programId, sessions) {
     }, 0);
 }
 
+const WD_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
 function initDays(daysPerWeek, existing = []) {
   return Array.from({ length: 7 }, (_, i) => {
     const isRest = i >= daysPerWeek;
-    if (existing[i]) return { ...existing[i], isRestDay: isRest };
+    if (existing[i]) return { ...existing[i], weekDay: existing[i].weekDay || WD_NAMES[i] };
     return {
       id:        generateId('day'),
       dayOrder:  i + 1,
-      dayName:   isRest ? 'Rest Day' : '',
-      weekDay:   '',
+      weekDay:   WD_NAMES[i],
+      dayName:   '',
       focusArea: '',
       exercises: [],
       isRestDay: isRest,
@@ -271,43 +273,49 @@ function StepDefinePhases({ phases, daysPerWeek, onPhasesChange }) {
   );
 }
 
-// ─── CreateProgramModal — Step 3: Build Day Templates per Phase ───────────────
-const WEEK_DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+// ─── CreateProgramModal — Step 3: Weekly Schedule ────────────────────────────
 
-function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
+function StepBuildDays({ phases, daysPerWeek, onPhasesChange, onUpdateDaysPerWeek }) {
   const [activePhase, setActivePhase] = useState(0);
   const inputStyle = {
     background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
     borderRadius:'8px', color:'#f1f5f9', fontSize:'14px', padding:'8px 10px',
   };
 
-  // Sync days count when daysPerWeek changes
-  useEffect(() => {
-    const updated = phases.map(phase => ({
-      ...phase,
-      days: phase.days.length !== daysPerWeek ? initDays(daysPerWeek, phase.days) : phase.days,
-    }));
-    onPhasesChange(updated);
-  }, [daysPerWeek]);
-
-  const updateDay = (phaseIdx, dayIdx, field, val) => {
+  const updateDayName = (phaseIdx, dayIdx, val) => {
     const next = phases.map((p, pi) => pi !== phaseIdx ? p : {
       ...p,
-      days: p.days.map((d, di) => di !== dayIdx ? d : { ...d, [field]: val }),
+      days: p.days.map((d, di) => di !== dayIdx ? d : { ...d, dayName: val }),
     });
     onPhasesChange(next);
   };
 
+  // Toggling rest/training is global across all phases (schedule is shared)
+  const toggleRestDay = (dayIdx) => {
+    const isCurrentlyRest = phases[0]?.days?.[dayIdx]?.isRestDay ?? false;
+    const next = phases.map(p => ({
+      ...p,
+      days: p.days.map((d, di) => di !== dayIdx ? d : {
+        ...d,
+        isRestDay: !isCurrentlyRest,
+        dayName: !isCurrentlyRest ? '' : d.dayName,
+      }),
+    }));
+    onPhasesChange(next);
+    const trainingCount = next[0].days.filter(d => !d.isRestDay).length;
+    onUpdateDaysPerWeek(trainingCount);
+  };
+
   const phase = phases[activePhase] || phases[0];
-  const days = phase?.days || [];
+  const days  = phase?.days || [];
+  const trainingDays = days.filter(d => !d.isRestDay);
 
   return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+    <div style={{ display:'flex', flexDirection:'column', gap:'10px' }}>
       <div style={{ color:'#94a3b8', fontSize:'13px' }}>
-        Name each training day for each phase. You can use different day splits per phase.
+        Choose which days are training days, then name each session. Rest/training selection applies to all phases.
       </div>
 
-      {/* Phase tabs */}
       {phases.length > 1 && (
         <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
           {phases.map((p, i) => (
@@ -322,61 +330,53 @@ function StepBuildDays({ phases, daysPerWeek, onPhasesChange }) {
         </div>
       )}
 
-      {days.map((day, i) => (
-        <div key={day.id} style={{
-          background: day.isRestDay ? 'rgba(255,255,255,0.02)' : 'rgba(255,255,255,0.04)',
-          border: day.isRestDay ? '1px solid rgba(255,255,255,0.04)' : '1px solid rgba(255,255,255,0.08)',
-          borderRadius:'10px', padding:'14px', opacity: day.isRestDay ? 0.55 : 1 }}>
-          <div style={{ display:'flex', alignItems:'center', gap:'10px' }}>
-            <div style={{ width:'28px', height:'28px', borderRadius:'50%',
-              background: day.isRestDay ? 'rgba(100,116,139,0.15)' : 'rgba(249,115,22,0.15)',
-              border: day.isRestDay ? '1px solid rgba(100,116,139,0.3)' : '1px solid rgba(249,115,22,0.3)',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              color: day.isRestDay ? '#475569' : '#f97316',
-              fontSize: day.isRestDay ? '14px' : '12px', fontWeight:700, flexShrink:0 }}>
-              {day.isRestDay ? '🌙' : (i + 1)}
+      {days.map((day, i) => {
+        const isRest = day.isRestDay;
+        return (
+          <div key={day.id} style={{
+            display:'flex', alignItems:'center', gap:'10px',
+            background: isRest ? 'rgba(255,255,255,0.02)' : 'rgba(249,115,22,0.05)',
+            border: isRest ? '1px solid rgba(255,255,255,0.05)' : '1px solid rgba(249,115,22,0.2)',
+            borderRadius:'10px', padding:'10px 14px' }}>
+            {/* Day of week */}
+            <div style={{ width:'34px', fontWeight:700, fontSize:'13px', flexShrink:0,
+              color: isRest ? '#334155' : '#f97316' }}>
+              {day.weekDay}
             </div>
-            {day.isRestDay ? (
-              <div style={{ flex:1, padding:'8px 10px', borderRadius:'8px',
-                background:'rgba(255,255,255,0.02)', border:'1px solid rgba(255,255,255,0.04)',
-                color:'#334155', fontSize:'14px' }}>
-                Rest Day
-              </div>
-            ) : (
+            {/* Toggle button */}
+            <button onClick={() => toggleRestDay(i)}
+              style={{ padding:'5px 12px', borderRadius:'20px', border:'none',
+                fontSize:'12px', fontWeight:600, cursor:'pointer', flexShrink:0,
+                background: isRest ? 'rgba(100,116,139,0.15)' : 'rgba(249,115,22,0.15)',
+                color: isRest ? '#475569' : '#f97316', transition:'all 0.15s' }}>
+              {isRest ? '🌙 Rest' : '💪 Training'}
+            </button>
+            {/* Session name */}
+            {!isRest ? (
               <input
-                value={day.dayName}
-                onChange={e => updateDay(activePhase, i, 'dayName', e.target.value)}
-                placeholder={`Day ${i + 1} name (e.g. Push, Legs, Upper)`}
+                value={day.dayName || ''}
+                onChange={e => updateDayName(activePhase, i, e.target.value)}
+                placeholder="Session name (e.g. Push, Pull, Legs, Upper Body)"
                 style={{ ...inputStyle, flex:1 }} />
+            ) : (
+              <span style={{ color:'#334155', fontSize:'13px', fontStyle:'italic' }}>Rest &amp; recovery</span>
             )}
           </div>
-          {!day.isRestDay && (
-            <div style={{ marginTop:'10px', display:'flex', alignItems:'center', gap:'6px', flexWrap:'wrap' }}>
-              <span style={{ fontSize:'11px', color:'#475569', flexShrink:0 }}>Day:</span>
-              {WEEK_DAYS.map(wd => {
-                const active = (day.weekDay || '') === wd;
-                return (
-                  <button key={wd}
-                    onClick={() => updateDay(activePhase, i, 'weekDay', active ? '' : wd)}
-                    style={{ padding:'4px 10px', borderRadius:'20px', border:'none',
-                      fontSize:'12px', cursor:'pointer', fontWeight: active ? 700 : 400,
-                      background: active ? '#f97316' : 'rgba(255,255,255,0.08)',
-                      color: active ? '#fff' : '#64748b', transition:'all 0.15s' }}>
-                    {wd}
-                  </button>
-                );
-              })}
-              {day.weekDay && (
-                <span style={{ fontSize:'11px', color:'#f97316', marginLeft:'4px' }}>✓ {day.weekDay}</span>
-              )}
-            </div>
-          )}
-        </div>
-      ))}
+        );
+      })}
+
+      <div style={{ background:'rgba(255,255,255,0.03)', borderRadius:'10px', padding:'10px 14px',
+        display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+        <span style={{ color:'#64748b', fontSize:'13px' }}>
+          {trainingDays.length} training · {7 - trainingDays.length} rest
+        </span>
+        <span style={{ color:'#f97316', fontSize:'13px', fontWeight:600 }}>
+          {trainingDays.map(d => d.weekDay).join(', ') || 'No days selected'}
+        </span>
+      </div>
     </div>
   );
 }
-
 
 // ─── ExerciseRow (drag + reorder + sets/reps/rest + alternatives) ─────────────
 function ExerciseRow({ ex, index, total, onMove, onUpdate, onRemove, allExercises, onCreateSuperset, onRemoveFromSuperset, supersetLabel, supersetColor, isLastInSuperset }) {
@@ -749,24 +749,22 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
             </div>
           )}
           <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0, paddingBottom:'4px' }}>
-            {days.map((d, i) => (
-              <button key={d.id} onClick={() => setActiveDay(i)}
-                style={{ padding:'5px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
-                  whiteSpace:'nowrap', fontSize:'12px', fontWeight: activeDay===i ? 600 : 400,
-                  background: d.isRestDay
-                    ? (activeDay===i ? 'rgba(100,116,139,0.25)' : 'rgba(255,255,255,0.03)')
-                    : (activeDay===i ? '#f97316' : 'rgba(255,255,255,0.08)'),
-                  color: d.isRestDay
-                    ? (activeDay===i ? '#64748b' : '#334155')
-                    : (activeDay===i ? '#fff' : '#94a3b8'),
-                  transition:'all 0.15s', flexShrink:0 }}>
-                {d.isRestDay ? '🌙' : (d.dayName || `Day ${i+1}`)}
-                {!d.isRestDay && d.weekDay &&
-                  <span style={{ marginLeft:'4px', opacity:0.75, fontSize:'10px' }}>{d.weekDay}</span>}
-                {!d.isRestDay && (d.exercises||[]).length > 0 &&
-                  <span style={{ marginLeft:'4px', opacity:0.7 }}>({d.exercises.length})</span>}
-              </button>
-            ))}
+            {days.filter(d => !d.isRestDay).map((d) => {
+              const i = days.indexOf(d);
+              return (
+                <button key={d.id} onClick={() => setActiveDay(i)}
+                  style={{ padding:'5px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
+                    whiteSpace:'nowrap', fontSize:'12px', fontWeight: activeDay===i ? 600 : 400,
+                    background: activeDay===i ? '#f97316' : 'rgba(255,255,255,0.08)',
+                    color: activeDay===i ? '#fff' : '#94a3b8',
+                    transition:'all 0.15s', flexShrink:0 }}>
+                  {d.weekDay && <span style={{ fontSize:'10px', opacity:0.7, marginRight:'3px' }}>{d.weekDay}</span>}
+                  {d.dayName || d.weekDay}
+                  {(d.exercises||[]).length > 0 &&
+                    <span style={{ marginLeft:'4px', opacity:0.7 }}>({d.exercises.length})</span>}
+                </button>
+              );
+            })}
           </div>
 
           {day.isRestDay ? (
@@ -947,7 +945,8 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
           {step === 1 && <StepDefinePhases phases={phases} daysPerWeek={data.daysPerWeek}
             onPhasesChange={setPhases} />}
           {step === 2 && <StepBuildDays phases={phases} daysPerWeek={data.daysPerWeek}
-            onPhasesChange={setPhases} />}
+            onPhasesChange={setPhases}
+            onUpdateDaysPerWeek={n => updateData('daysPerWeek', n)} />}
           {step === 3 && <StepExercises phases={phases} onPhasesChange={setPhases}
             allExercises={allExercises} />}
           {error && (
