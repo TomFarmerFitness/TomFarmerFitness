@@ -536,6 +536,9 @@ export default function ClientDetailPage() {
   const [overrideSaving, setOverrideSaving] = useState(false);
   const [showTDEE,      setShowTDEE]      = useState(false);
   const [tdeeForm,      setTdeeForm]      = useState({ sex: 'male', age: '', weight: '', height: '', activity: '1.55', goal: 'lose_moderate' });
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
+  const [profileEditForm, setProfileEditForm] = useState({ age: '', targetWeight: '', trainingDaysPerWeek: '', trainingDays: [] });
+  const [profileEditSaving, setProfileEditSaving] = useState(false);
   const [statusSaving,  setStatusSaving]  = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
@@ -922,7 +925,27 @@ export default function ClientDetailPage() {
             </div>
             {/* Profile */}
             <div style={cardStyle}>
-              <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: '0 0 16px' }}>Profile</h3>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'16px' }}>
+                <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>Profile</h3>
+                <button
+                  onClick={() => {
+                    const days = client.TrainingDays
+                      ? client.TrainingDays.split(',').map(d => d.trim()).filter(Boolean)
+                      : [];
+                    setProfileEditForm({
+                      age: client.Age || '',
+                      targetWeight: client.TargetWeight || '',
+                      trainingDaysPerWeek: client.TrainingDaysPerWeek || '',
+                      trainingDays: days,
+                    });
+                    setShowProfileEdit(true);
+                  }}
+                  style={{ padding:'5px 12px', borderRadius:'8px', border:'none',
+                    background:'rgba(249,115,22,0.1)', color:'#f97316',
+                    fontSize:'12px', fontWeight:600, cursor:'pointer' }}>
+                  ✏️ Edit
+                </button>
+              </div>
               {[
                 { label: 'Gender',    value: client.Gender },
                 { label: 'Equipment', value: client.Equipment },
@@ -1425,6 +1448,118 @@ export default function ClientDetailPage() {
                 border:'none', borderRadius:'10px', color:'#fff',
                 fontSize:'14px', fontWeight:600, cursor: overrideSaving ? 'default' : 'pointer' }}>
                 {overrideSaving ? 'Saving…' : '✓ Save & Pause Auto-Adjust'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* Profile Edit Modal */}
+      {showProfileEdit && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.75)', zIndex:1000,
+          display:'flex', alignItems:'center', justifyContent:'center', padding:'16px' }}>
+          <div style={{ background:'#1e293b', borderRadius:'14px', width:'100%', maxWidth:'420px',
+            display:'flex', flexDirection:'column', overflow:'hidden', maxHeight:'90vh' }}>
+            <div style={{ padding:'18px 20px 14px', borderBottom:'1px solid rgba(255,255,255,0.08)',
+              display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+              <div style={{ color:'#f1f5f9', fontWeight:700, fontSize:'15px' }}>Edit Client Profile</div>
+              <button onClick={() => setShowProfileEdit(false)}
+                style={{ background:'none', border:'none', color:'#64748b', fontSize:'22px',
+                  cursor:'pointer', lineHeight:1, padding:'4px' }}>×</button>
+            </div>
+            <div style={{ padding:'20px', display:'flex', flexDirection:'column', gap:'14px', overflowY:'auto' }}>
+              {/* Age */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+                  marginBottom:'5px', display:'block' }}>AGE (YEARS)</label>
+                <input type='number' min={1} max={120} value={profileEditForm.age}
+                  onChange={e => setProfileEditForm(f => ({ ...f, age: e.target.value }))}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
+                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
+                    color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+              </div>
+              {/* Target Weight */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+                  marginBottom:'5px', display:'block' }}>TARGET WEIGHT (KG)</label>
+                <input type='number' min={30} max={300} step={0.1} value={profileEditForm.targetWeight}
+                  onChange={e => setProfileEditForm(f => ({ ...f, targetWeight: e.target.value }))}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
+                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
+                    color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+              </div>
+              {/* Training days per week */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+                  marginBottom:'5px', display:'block' }}>TRAINING DAYS PER WEEK</label>
+                <input type='number' min={1} max={7} value={profileEditForm.trainingDaysPerWeek}
+                  onChange={e => setProfileEditForm(f => ({ ...f, trainingDaysPerWeek: e.target.value }))}
+                  style={{ width:'100%', background:'rgba(255,255,255,0.06)',
+                    border:'1px solid rgba(255,255,255,0.1)', borderRadius:'8px',
+                    color:'#f1f5f9', fontSize:'15px', padding:'10px 12px', boxSizing:'border-box' }} />
+              </div>
+              {/* Specific training days */}
+              <div>
+                <label style={{ color:'#64748b', fontSize:'11px', letterSpacing:'0.05em',
+                  marginBottom:'8px', display:'block' }}>TRAINING DAYS</label>
+                <div style={{ display:'flex', gap:'6px', flexWrap:'wrap' }}>
+                  {['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].map(day => {
+                    const active = profileEditForm.trainingDays.includes(day);
+                    return (
+                      <button key={day} onClick={() => setProfileEditForm(f => ({
+                        ...f,
+                        trainingDays: active
+                          ? f.trainingDays.filter(d => d !== day)
+                          : [...f.trainingDays, day],
+                      }))}
+                      style={{ padding:'8px 12px', borderRadius:'8px', border:'none', cursor:'pointer',
+                        background: active ? '#f97316' : 'rgba(255,255,255,0.06)',
+                        color: active ? '#fff' : '#64748b',
+                        fontSize:'13px', fontWeight: active ? 700 : 400,
+                        transition:'background 0.15s, color 0.15s' }}>
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ fontSize:'11px', color:'#475569', marginTop:'6px' }}>
+                  {profileEditForm.trainingDays.length > 0
+                    ? `${profileEditForm.trainingDays.length} day${profileEditForm.trainingDays.length !== 1 ? 's' : ''} selected`
+                    : 'No specific days set'}
+                </div>
+              </div>
+            </div>
+            <div style={{ padding:'14px 20px', borderTop:'1px solid rgba(255,255,255,0.08)',
+              display:'flex', gap:'10px' }}>
+              <button onClick={() => setShowProfileEdit(false)}
+                style={{ flex:1, padding:'11px', background:'rgba(255,255,255,0.06)',
+                  border:'1px solid rgba(255,255,255,0.1)', borderRadius:'10px',
+                  color:'#94a3b8', fontSize:'14px', cursor:'pointer' }}>Cancel</button>
+              <button disabled={profileEditSaving} onClick={async () => {
+                setProfileEditSaving(true);
+                try {
+                  const updatedClient = {
+                    ...Object.fromEntries(Object.entries(client)),
+                    Age: profileEditForm.age,
+                    TargetWeight: profileEditForm.targetWeight,
+                    TrainingDaysPerWeek: profileEditForm.trainingDaysPerWeek,
+                    TrainingDays: profileEditForm.trainingDays.join(','),
+                  };
+                  await upsertRow('Clients', 'ClientID', client.ClientID, updatedClient);
+                  setClient(updatedClient);
+                  setShowProfileEdit(false);
+                } catch (e) {
+                  alert('Save failed: ' + e.message);
+                } finally {
+                  setProfileEditSaving(false);
+                }
+              }}
+              style={{ flex:2, padding:'11px',
+                background: profileEditSaving ? 'rgba(249,115,22,0.4)' : '#f97316',
+                border:'none', borderRadius:'10px', color:'#fff',
+                fontSize:'14px', fontWeight:600, cursor: profileEditSaving ? 'default' : 'pointer' }}>
+                {profileEditSaving ? 'Saving…' : '✓ Save Changes'}
               </button>
             </div>
           </div>
