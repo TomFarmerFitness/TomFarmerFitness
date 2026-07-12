@@ -1362,7 +1362,7 @@ const MICRO_RDI = [
   { key: 'vitaminB12', label: 'Vitamin B12', unit: 'mcg', rdi: 2.4,  color: '#c084fc' },
 ];
 
-function MicronutrientsPanel({ nutritionRows, onClose }) {
+function MicronutrientsPanel({ nutritionRows, onClose, displayDate }) {
   // Prevent background scroll while panel is open (iOS-compatible)
   useEffect(() => {
     const scrollY = window.scrollY;
@@ -1377,17 +1377,30 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
     };
   }, []);
 
-  // Aggregate micronutrients from all entries that have the data
+  // Aggregate micronutrients — only count foods that actually have non-zero data
   const totals = {};
-  let hasSomeData = false;
+  let rowsWithData   = 0;   // foods that have a micronutrients object with at least one non-zero value
+  let rowsWithObject = 0;   // foods that have a micronutrients object (even all-zero)
   MICRO_RDI.forEach(m => { totals[m.key] = 0; });
+
   nutritionRows.forEach(row => {
     if (!row.micronutrients) return;
-    hasSomeData = true;
+    rowsWithObject++;
+    const hasNonZero = MICRO_RDI.some(m => parseFloat(row.micronutrients[m.key] || 0) > 0);
+    if (hasNonZero) rowsWithData++;
     MICRO_RDI.forEach(m => {
       totals[m.key] += parseFloat(row.micronutrients[m.key] || 0);
     });
   });
+
+  // Only show the data section if at least one nutrient is actually > 0
+  const hasAnyValues  = MICRO_RDI.some(m => totals[m.key] > 0);
+  const hasScannedFoods = rowsWithObject > 0;   // some foods were barcode-scanned
+  const scannedButEmpty = hasScannedFoods && !hasAnyValues; // scanned but OFD had no micro data
+
+  const dateLabel = displayDate
+    ? (displayDate === todayISO() ? "Today's" : formatDisplayDate(displayDate) + "'s")
+    : "Today's";
 
   const portalTarget = document.getElementById('modal-root') || document.body;
   return createPortal(
@@ -1406,7 +1419,14 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 20px 10px' }}>
           <div>
             <div style={{ color: '#f8fafc', fontSize: 16, fontWeight: 700 }}>Micronutrients</div>
-            <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>Today's intake vs. daily target</div>
+            <div style={{ color: '#64748b', fontSize: 11, marginTop: 2 }}>
+              {dateLabel} intake vs. daily target
+              {rowsWithData > 0 && (
+                <span style={{ color: '#22c55e', marginLeft: 6 }}>
+                  · {rowsWithData} food{rowsWithData !== 1 ? 's' : ''} with data
+                </span>
+              )}
+            </div>
           </div>
           <button onClick={onClose} style={{
             width: 30, height: 30, borderRadius: '50%', background: 'rgba(255,255,255,0.1)',
@@ -1417,19 +1437,30 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
 
         {/* Body */}
         <div style={{ overflowY: 'auto', padding: '4px 20px 20px', flex: 1 }}>
-          {!hasSomeData ? (
+          {!hasScannedFoods ? (
             <div style={{ textAlign: 'center', padding: '32px 0', color: '#475569' }}>
               <div style={{ fontSize: 32, marginBottom: 10 }}>🔬</div>
               <div style={{ fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>No micronutrient data yet</div>
               <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
                 Micronutrient data is captured when you scan a barcode.<br />
-                Manually searched foods don't include this data.
+                Manually searched or manually entered foods don't include this data.
+              </div>
+            </div>
+          ) : scannedButEmpty ? (
+            <div style={{ textAlign: 'center', padding: '32px 0', color: '#475569' }}>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>📭</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#64748b', marginBottom: 6 }}>Product data not available</div>
+              <div style={{ fontSize: 12, color: '#475569', lineHeight: 1.5 }}>
+                {rowsWithObject} barcode-scanned food{rowsWithObject !== 1 ? 's' : ''} found, but the product{rowsWithObject !== 1 ? 's' : ''}{' '}
+                didn't include micronutrient data in the Open Food Facts database.<br /><br />
+                Try scanning different products — larger brands tend to have more complete data.
               </div>
             </div>
           ) : (
             <>
               <div style={{ fontSize: 11, color: '#475569', marginBottom: 14, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, lineHeight: 1.5 }}>
-                ℹ️ Data available for barcode-scanned foods only. Foods without micronutrient data contribute 0.
+                ℹ️ Based on {rowsWithData} of {nutritionRows.length} logged food{nutritionRows.length !== 1 ? 's' : ''}.
+                Only barcode-scanned foods with micronutrient data are counted.
               </div>
               {MICRO_RDI.map(m => {
                 const val = Math.round(totals[m.key] * 10) / 10;
@@ -1443,7 +1474,7 @@ function MicronutrientsPanel({ nutritionRows, onClose }) {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 5 }}>
                       <span style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{m.label}</span>
                       <span style={{ fontSize: 12, color: '#64748b' }}>
-                        <span style={{ color: over ? (m.isLimit ? '#f87171' : '#22c55e') : '#94a3b8', fontWeight: 600 }}>
+                        <span style={{ color: over ? (m.isLimit ? '#f87171' : '#22c55e') : (val > 0 ? '#94a3b8' : '#475569'), fontWeight: 600 }}>
                           {val}{m.unit}
                         </span>
                         {' / '}{m.rdi}{m.unit}
@@ -1923,6 +1954,11 @@ export default function NutritionPage() {
               style={{
                 flex: 2, padding: '14px', borderRadius: 14, border: 'none',
                 background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
+            <button
+              onClick={() => { setAddFoodMeal('Snacks'); setShowAddFood(true); }}
+              style={{
+                flex: 2, padding: '14px', borderRadius: 14, border: 'none',
+                background: '#22c55e', color: '#000', fontSize: 15, fontWeight: 700,
                 cursor: 'pointer',
               }}
             >
@@ -1972,6 +2008,7 @@ export default function NutritionPage() {
       {showMicros && (
         <MicronutrientsPanel
           nutritionRows={dayRows}
+          displayDate={selectedDate}
           onClose={() => setShowMicros(false)}
         />
       )}
