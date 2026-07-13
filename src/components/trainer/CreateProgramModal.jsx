@@ -640,38 +640,33 @@ const TRACKED_MUSCLES = [
 ];
 
 function StepExercises({ phases, onPhasesChange, allExercises }) {
-  const [activePhase,   setActivePhase]   = useState(0);
-  const [activeSession, setActiveSession] = useState(0);
-  const [search,        setSearch]        = useState('');
-  const [muscleFilter,  setMuscleFilter]  = useState('All');
-  const [lastDeleted,   setLastDeleted]   = useState(null);
+  // Track which phase+session is actively being edited
+  const [activeKey,     setActiveKey]    = useState({ phaseIdx: 0, sessionIdx: 0 });
+  const [search,        setSearch]       = useState('');
+  const [muscleFilter,  setMuscleFilter] = useState('All');
+  const [lastDeleted,   setLastDeleted]  = useState(null);
   const undoTimerRef = useRef(null);
 
-  const phase    = phases[activePhase] || phases[0];
-  const sessions = phase?.sessionTemplates || [];
-  const session  = sessions[activeSession] || null;
-  const exercises = session?.exercises || [];
+  const { phaseIdx: activePhaseIdx, sessionIdx: activeSessionIdx } = activeKey;
+  const activePhase   = phases[activePhaseIdx] || phases[0];
+  const activeSessions = activePhase?.sessionTemplates || [];
+  const activeSession = activeSessions[activeSessionIdx] || null;
+  const exercises     = activeSession?.exercises || [];
 
-  // Clamp activeSession when switching phases
-  useEffect(() => {
-    const max = ((phases[activePhase]?.sessionTemplates) || []).length - 1;
-    if (activeSession > max && max >= 0) setActiveSession(0);
-  }, [activePhase]);
-
-  // Weekly sets tracker: aggregate from first week's schedule
+  // Weekly sets: for the currently selected phase's first week schedule
   const weeklySets = useMemo(() => {
     const counts = {};
-    const firstWeek = phase?.weekSchedules?.[0] || [];
+    const firstWeek = activePhase?.weekSchedules?.[0] || [];
     firstWeek.forEach(sessionId => {
       if (!sessionId) return;
-      const sess = (phase?.sessionTemplates || []).find(s => s.id === sessionId);
+      const sess = (activePhase?.sessionTemplates || []).find(s => s.id === sessionId);
       (sess?.exercises || []).forEach(ex => {
         const m = ex.muscleGroup || '';
         if (m) counts[m] = (counts[m] || 0) + (parseInt(ex.sets) || 0);
       });
     });
     return counts;
-  }, [phase]);
+  }, [activePhase]);
 
   const filtered = allExercises.filter(e => {
     const matchSearch = !search || (e.Name || '').toLowerCase().includes(search.toLowerCase());
@@ -680,16 +675,16 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
   });
 
   const updateSessionExercises = (newExercises) => {
-    onPhasesChange(phases.map((p, pi) => pi !== activePhase ? p : {
+    onPhasesChange(phases.map((p, pi) => pi !== activePhaseIdx ? p : {
       ...p,
       sessionTemplates: (p.sessionTemplates || []).map((s, si) =>
-        si !== activeSession ? s : { ...s, exercises: newExercises }
+        si !== activeSessionIdx ? s : { ...s, exercises: newExercises }
       ),
     }));
   };
 
   const addExercise = (ex) => {
-    if (!session) return;
+    if (!activeSession) return;
     const newEx = {
       id: generateId('exrow'), exerciseId: ex.ExerciseID,
       name: ex.Name, muscleGroup: ex.PrimaryMuscle || '',
@@ -700,21 +695,18 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
 
   const moveExercise = (from, to) => {
     if (from === to) return;
-    const arr = [...exercises];
-    const [item] = arr.splice(from, 1);
-    arr.splice(to, 0, item);
+    const arr = [...exercises]; const [item] = arr.splice(from, 1); arr.splice(to, 0, item);
     updateSessionExercises(arr);
   };
 
   const updateExercise = (i, field, val) => {
-    const arr = [...exercises];
-    arr[i] = { ...arr[i], [field]: val };
+    const arr = [...exercises]; arr[i] = { ...arr[i], [field]: val };
     updateSessionExercises(arr);
   };
 
   const removeExercise = (i) => {
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    setLastDeleted({ ex: exercises[i], idx: i });
+    setLastDeleted({ ex: exercises[i], idx: i, phaseIdx: activePhaseIdx, sessionIdx: activeSessionIdx });
     undoTimerRef.current = setTimeout(() => setLastDeleted(null), 6000);
     updateSessionExercises(exercises.filter((_, idx) => idx !== i));
   };
@@ -722,8 +714,7 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
   const undoRemove = () => {
     if (!lastDeleted) return;
     if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
-    const arr = [...exercises];
-    arr.splice(lastDeleted.idx, 0, lastDeleted.ex);
+    const arr = [...exercises]; arr.splice(lastDeleted.idx, 0, lastDeleted.ex);
     updateSessionExercises(arr);
     setLastDeleted(null);
   };
@@ -763,15 +754,54 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
 
   const uniqueMuscles = ['All', ...new Set(allExercises.map(e => e.PrimaryMuscle).filter(Boolean))];
 
-  return (
-    <div style={{ display:'flex', flexDirection:'column', gap:'8px', height:'460px' }}>
+  // Render the exercise list for whichever session is active
+  const renderExerciseList = () => {
+    if (!activeSession) return null;
+    if (exercises.length === 0) {
+      return (
+        <div style={{ textAlign:'center', padding:'16px', color:'#475569', fontSize:'12px' }}>
+          Click any exercise on the left to add it to <strong style={{color:'#f97316'}}>{activeSession.name}</strong>
+        </div>
+      );
+    }
+    const seenSS = new Set();
+    return exercises.map((ex, i) => {
+      const ssLabel = ex.supersetId ? getSupersetLabel(ex.supersetId) : null;
+      const ssColor = ex.supersetId ? getSupersetColor(ex.supersetId) : null;
+      const isFirst = ex.supersetId && !seenSS.has(ex.supersetId);
+      if (ex.supersetId) seenSS.add(ex.supersetId);
+      const isLast = ex.supersetId && (i === exercises.length - 1 || exercises[i+1]?.supersetId !== ex.supersetId);
+      return (
+        <React.Fragment key={ex.id}>
+          {isFirst && (
+            <div style={{ display:'flex', alignItems:'center', gap:'6px',
+              padding:'5px 10px 3px', marginTop:'6px',
+              borderLeft:`3px solid ${ssColor}`, background:`${ssColor}10`, borderRadius:'0 6px 0 0' }}>
+              <span style={{ fontSize:'10px', fontWeight:700, color: ssColor, textTransform:'uppercase' }}>
+                ⚡ Superset {ssLabel}
+              </span>
+              <span style={{ fontSize:'10px', color:'#475569' }}>— do all back-to-back, then rest</span>
+            </div>
+          )}
+          <ExerciseRow ex={ex} index={i} total={exercises.length}
+            onMove={moveExercise} onUpdate={updateExercise} onRemove={removeExercise}
+            onCreateSuperset={createSuperset} onRemoveFromSuperset={removeFromSuperset}
+            supersetLabel={ssLabel} supersetColor={ssColor} isLastInSuperset={isLast}
+            allExercises={allExercises} />
+        </React.Fragment>
+      );
+    });
+  };
 
-      {/* Weekly sets tracker */}
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'8px', height:'500px' }}>
+
+      {/* Weekly sets tracker — shows for currently active phase */}
       <div style={{ flexShrink:0, background:'rgba(0,0,0,0.2)', borderRadius:'8px',
         padding:'6px 10px', display:'flex', gap:'5px', overflowX:'auto', alignItems:'center' }}>
         <div style={{ fontSize:'9px', color:'#334155', flexShrink:0, marginRight:'2px',
-          lineHeight:1.4, textTransform:'uppercase', letterSpacing:'0.3px' }}>
-          Sets/wk<br/>(10–15)
+          lineHeight:1.5, textTransform:'uppercase', letterSpacing:'0.3px' }}>
+          {activePhase?.name || 'Phase'}<br/>Sets/wk
         </div>
         {TRACKED_MUSCLES.map(({ key, label }) => {
           const sets = weeklySets[key] || 0;
@@ -788,25 +818,27 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
         })}
       </div>
 
-      {/* Phase tabs (compact) */}
-      {phases.length > 1 && (
-        <div style={{ flexShrink:0, display:'flex', gap:'4px', overflowX:'auto' }}>
-          {phases.map((p, i) => (
-            <button key={p.id} onClick={() => { setActivePhase(i); setActiveSession(0); }}
-              style={{ padding:'4px 10px', borderRadius:'6px', border:'none', cursor:'pointer',
-                whiteSpace:'nowrap', fontSize:'11px', fontWeight: activePhase===i ? 600 : 400,
-                background: activePhase===i ? 'rgba(249,115,22,0.3)' : 'rgba(255,255,255,0.06)',
-                color: activePhase===i ? '#f97316' : '#64748b', transition:'all 0.15s', flexShrink:0 }}>
-              {p.name || `Phase ${i+1}`}
-            </button>
-          ))}
+      {/* Undo toast */}
+      {lastDeleted && (
+        <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between',
+          background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.25)',
+          borderRadius:'8px', padding:'7px 12px' }}>
+          <span style={{ color:'#94a3b8', fontSize:'12px' }}>
+            Deleted <strong style={{color:'#f1f5f9'}}>{lastDeleted.ex.name}</strong>
+          </span>
+          <button onClick={undoRemove}
+            style={{ background:'#f97316', border:'none', borderRadius:'6px',
+              color:'#fff', fontSize:'12px', fontWeight:600, cursor:'pointer', padding:'4px 10px' }}>
+            ↩ Undo
+          </button>
         </div>
       )}
 
       {/* Main two-column layout */}
       <div style={{ display:'flex', gap:'12px', flex:1, minHeight:0 }}>
+
         {/* Left: exercise search */}
-        <div style={{ width:'200px', flexShrink:0, display:'flex', flexDirection:'column', gap:'8px' }}>
+        <div style={{ width:'190px', flexShrink:0, display:'flex', flexDirection:'column', gap:'8px' }}>
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Search exercises…"
             style={{ background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
@@ -817,6 +849,13 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
               borderRadius:'8px', color:'#f1f5f9', fontSize:'12px', padding:'7px 8px', width:'100%' }}>
             {uniqueMuscles.map(m => <option key={m} value={m}>{m}</option>)}
           </select>
+          {/* Which session exercises will go into */}
+          <div style={{ fontSize:'11px', color:'#64748b', padding:'2px 2px' }}>
+            Adding to:{' '}
+            <span style={{ color: activeSession ? '#f97316' : '#475569', fontWeight:600 }}>
+              {activeSession ? `${activePhase?.name} · ${activeSession.name}` : 'select a session →'}
+            </span>
+          </div>
           <div style={{ overflowY:'auto', flex:1 }}>
             {filtered.length === 0 ? (
               <div style={{ color:'#475569', fontSize:'12px', padding:'8px 0', textAlign:'center' }}>No exercises found</div>
@@ -824,10 +863,10 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
               <button key={ex.ExerciseID} onClick={() => addExercise(ex)}
                 style={{ width:'100%', background:'none', border:'none', padding:'7px 4px',
                   display:'flex', alignItems:'center', gap:'6px',
-                  cursor: session ? 'pointer' : 'default',
+                  cursor: activeSession ? 'pointer' : 'default',
                   borderBottom:'1px solid rgba(255,255,255,0.05)', textAlign:'left',
-                  opacity: session ? 1 : 0.35 }}
-                onMouseEnter={e => { if (session) e.currentTarget.style.background='rgba(249,115,22,0.08)'; }}
+                  opacity: activeSession ? 1 : 0.35 }}
+                onMouseEnter={e => { if (activeSession) e.currentTarget.style.background='rgba(249,115,22,0.08)'; }}
                 onMouseLeave={e => e.currentTarget.style.background='none'}>
                 <span style={{ color:'#f97316', fontSize:'14px', flexShrink:0 }}>+</span>
                 <div>
@@ -839,93 +878,78 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
           </div>
         </div>
 
-        {/* Right: session tabs + exercise builder */}
-        <div style={{ flex:1, display:'flex', flexDirection:'column', gap:'8px', minWidth:0 }}>
-          {/* Session tabs */}
-          <div style={{ display:'flex', gap:'4px', overflowX:'auto', flexShrink:0, paddingBottom:'4px' }}>
-            {sessions.length === 0 ? (
-              <div style={{ color:'#475569', fontSize:'12px', padding:'6px 0' }}>
-                No sessions in this phase — go back to Step 3 to add sessions.
-              </div>
-            ) : sessions.map((s, si) => (
-              <button key={s.id} onClick={() => setActiveSession(si)}
-                style={{ padding:'5px 12px', borderRadius:'6px', border:'none', cursor:'pointer',
-                  whiteSpace:'nowrap', fontSize:'12px', fontWeight: activeSession===si ? 600 : 400,
-                  background: activeSession===si ? '#f97316' : 'rgba(255,255,255,0.08)',
-                  color: activeSession===si ? '#fff' : '#94a3b8',
-                  transition:'all 0.15s', flexShrink:0 }}>
-                {s.name}
-                {(s.exercises||[]).length > 0 &&
-                  <span style={{ marginLeft:'4px', opacity:0.7, fontSize:'11px' }}>({s.exercises.length})</span>}
-              </button>
-            ))}
-          </div>
+        {/* Right: all phases expanded, scrollable — click a session to edit its exercises */}
+        <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', gap:'20px', minWidth:0 }}>
+          {phases.map((phase, phaseIdx) => {
+            const phaseSessions = phase.sessionTemplates || [];
+            const isThisPhaseActive = activePhaseIdx === phaseIdx;
 
-          {!session ? (
-            <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center',
-              justifyContent:'center', gap:'8px', color:'#475569' }}>
-              <div style={{ fontSize:'28px' }}>💪</div>
-              <div style={{ fontSize:'13px' }}>Select a session tab above to add exercises</div>
-            </div>
-          ) : (
-            <>
-              {lastDeleted && (
-                <div style={{ flexShrink:0, display:'flex', alignItems:'center', justifyContent:'space-between',
-                  background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.25)',
-                  borderRadius:'8px', padding:'7px 12px' }}>
-                  <span style={{ color:'#94a3b8', fontSize:'12px' }}>
-                    Deleted <strong style={{color:'#f1f5f9'}}>{lastDeleted.ex.name}</strong>
-                  </span>
-                  <button onClick={undoRemove}
-                    style={{ background:'#f97316', border:'none', borderRadius:'6px',
-                      color:'#fff', fontSize:'12px', fontWeight:600, cursor:'pointer', padding:'4px 10px' }}>
-                    ↩ Undo
-                  </button>
-                </div>
-              )}
-              <div style={{ overflowY:'auto', flex:1 }}>
-                {exercises.length === 0 ? (
-                  <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
-                    justifyContent:'center', height:'80%', gap:'8px', color:'#475569' }}>
-                    <div style={{ fontSize:'28px' }}>💪</div>
-                    <div style={{ fontSize:'13px' }}>Search and click exercises on the left to add them to <strong style={{color:'#f97316'}}>{session.name}</strong></div>
+            return (
+              <div key={phase.id}>
+                {/* Phase header */}
+                <div style={{ display:'flex', alignItems:'center', gap:'8px', marginBottom:'8px',
+                  paddingBottom:'6px', borderBottom:'1px solid rgba(249,115,22,0.15)' }}>
+                  <div style={{ width:'22px', height:'22px', borderRadius:'50%', flexShrink:0,
+                    background: isThisPhaseActive ? '#f97316' : 'rgba(249,115,22,0.15)',
+                    display:'flex', alignItems:'center', justifyContent:'center',
+                    color: isThisPhaseActive ? '#fff' : '#f97316', fontSize:'11px', fontWeight:700 }}>
+                    {phaseIdx + 1}
                   </div>
-                ) : (() => {
-                  const seenSS = new Set();
-                  return exercises.map((ex, i) => {
-                    const ssLabel = ex.supersetId ? getSupersetLabel(ex.supersetId) : null;
-                    const ssColor = ex.supersetId ? getSupersetColor(ex.supersetId) : null;
-                    const isFirst = ex.supersetId && !seenSS.has(ex.supersetId);
-                    if (ex.supersetId) seenSS.add(ex.supersetId);
-                    const isLast = ex.supersetId && (i === exercises.length - 1 || exercises[i+1]?.supersetId !== ex.supersetId);
-                    return (
-                      <React.Fragment key={ex.id}>
-                        {isFirst && (
-                          <div style={{ display:'flex', alignItems:'center', gap:'6px',
-                            padding:'5px 10px 3px', marginTop:'6px',
-                            borderLeft:`3px solid ${ssColor}`, background:`${ssColor}10`,
-                            borderRadius:'0 6px 0 0' }}>
-                            <span style={{ fontSize:'10px', fontWeight:700, color: ssColor,
-                              letterSpacing:'0.06em', textTransform:'uppercase' }}>
-                              ⚡ Superset {ssLabel}
-                            </span>
-                            <span style={{ fontSize:'10px', color:'#475569' }}>
-                              — do all back-to-back, then rest
-                            </span>
-                          </div>
-                        )}
-                        <ExerciseRow ex={ex} index={i} total={exercises.length}
-                          onMove={moveExercise} onUpdate={updateExercise} onRemove={removeExercise}
-                          onCreateSuperset={createSuperset} onRemoveFromSuperset={removeFromSuperset}
-                          supersetLabel={ssLabel} supersetColor={ssColor} isLastInSuperset={isLast}
-                          allExercises={allExercises} />
-                      </React.Fragment>
-                    );
-                  });
-                })()}
+                  <span style={{ color: isThisPhaseActive ? '#f97316' : '#94a3b8',
+                    fontSize:'12px', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em' }}>
+                    {phase.name || `Phase ${phaseIdx + 1}`}
+                  </span>
+                  <span style={{ color:'#334155', fontSize:'11px' }}>
+                    · {phase.weekCount || 4} weeks · {phaseSessions.length} session{phaseSessions.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {/* Session tabs for this phase */}
+                {phaseSessions.length === 0 ? (
+                  <div style={{ color:'#475569', fontSize:'12px', padding:'8px', fontStyle:'italic',
+                    background:'rgba(255,255,255,0.02)', borderRadius:'8px' }}>
+                    No sessions in this phase — go back to Step 3 to add them.
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display:'flex', gap:'6px', flexWrap:'wrap', marginBottom:'10px' }}>
+                      {phaseSessions.map((s, si) => {
+                        const isActive = isThisPhaseActive && activeSessionIdx === si;
+                        const exCount  = (s.exercises || []).length;
+                        return (
+                          <button key={s.id}
+                            onClick={() => setActiveKey({ phaseIdx, sessionIdx: si })}
+                            style={{ padding:'6px 16px', borderRadius:'20px', border: isActive ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                              cursor:'pointer', fontSize:'13px', fontWeight: isActive ? 700 : 400,
+                              background: isActive ? '#f97316' : 'rgba(255,255,255,0.06)',
+                              color: isActive ? '#fff' : '#94a3b8',
+                              transition:'all 0.15s' }}>
+                            {s.name}
+                            {exCount > 0 && (
+                              <span style={{ marginLeft:'6px', fontSize:'11px',
+                                opacity: isActive ? 0.85 : 0.55,
+                                background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.08)',
+                                padding:'1px 6px', borderRadius:'10px' }}>
+                                {exCount}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Exercise list — inline, only for active session in this phase */}
+                    {isThisPhaseActive && activeSession && (
+                      <div style={{ background:'rgba(0,0,0,0.15)', border:'1px solid rgba(249,115,22,0.1)',
+                        borderRadius:'10px', padding:'10px' }}>
+                        {renderExerciseList()}
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
-            </>
-          )}
+            );
+          })}
         </div>
       </div>
     </div>
