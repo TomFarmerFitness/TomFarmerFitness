@@ -710,7 +710,7 @@ export default function ProgramLibraryPage() {
       level: program.level || 'Intermediate',
       equipment: program.equipment || [],
       focusAreas: program.focusAreas || [],
-      days: program.days || initDays(program.daysPerWeek || 3),
+      days: program.days || [],
     });
     setCreateOpen(true);
   };

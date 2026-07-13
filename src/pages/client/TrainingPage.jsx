@@ -1938,7 +1938,10 @@ export default function TrainingPage() {
         assignedDays = new Set(profile.TrainingDays.split(',').map(d=>d.trim()).filter(Boolean));
       }
       // If program has weekDay-based days, those take precedence over the client profile field
-      const phaseDaysForTd = (parsedPhases?.[parseInt(profile?.CurrentPhaseIdx)||0]?.days) ||
+      const phaseForTd = parsedPhases?.[parseInt(profile?.CurrentPhaseIdx)||0];
+      const phaseDaysForTd =
+        phaseForTd?.weekDays?.[weekNum - 1] ||  // week-specific days (new format)
+        phaseForTd?.days ||                       // generic phase days (old format)
         (myProgram?.DaysJSON ? (() => { try { return JSON.parse(myProgram.DaysJSON); } catch { return []; } })() : []);
       const programTrainingDays = phaseDaysForTd.filter(d => !d.isRestDay && d.weekDay).map(d => d.weekDay);
       if (programTrainingDays.length > 0) {
@@ -1946,9 +1949,12 @@ export default function TrainingPage() {
       }
       setTrainingDays(assignedDays);
 
-      // Build sessions from current phase days (or DaysJSON fallback)
+      // Build sessions from current phase days — prefer week-specific days (new format)
       let mySessions = [];
-      const currentPhaseDays = parsedPhases?.[phaseIdx]?.days;
+      const currentPhase = parsedPhases?.[phaseIdx];
+      const currentPhaseDays =
+        currentPhase?.weekDays?.[weekNum - 1] ||  // week-specific (new format)
+        currentPhase?.days;                         // generic phase days (old format)
       const daysSource = currentPhaseDays || (myProgram?.DaysJSON ? (() => { try { return JSON.parse(myProgram.DaysJSON); } catch { return []; } })() : []);
       if (daysSource.length > 0 && myProgram) {
         // Only include training days (not rest days)
