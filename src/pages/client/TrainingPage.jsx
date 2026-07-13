@@ -1299,7 +1299,6 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
               <input
                 type={isTimeBased ? 'text' : 'number'} inputMode={isTimeBased ? 'text' : 'numeric'} value={s.reps}
                 onChange={e=>onUpdateSet(idx,{...s,reps:e.target.value})}
-                disabled={s.done}
                 style={{
                   width:'100%',padding:'8px 6px',textAlign:'center',
                   background: s.done ? 'rgba(34,197,94,0.07)' : '#0f172a',
@@ -1314,11 +1313,10 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
                 <input
                   type="number" inputMode="decimal" value={s.weight}
                   onChange={e=>onUpdateSet(idx,{...s,weight:e.target.value})}
-                  disabled={s.done}
                   style={{
                     width:'100%',padding:'8px 6px',textAlign:'center',
                     background: s.done ? 'rgba(34,197,94,0.07)' : '#0f172a',
-                    border:`1px solid ${s.done ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.09)'}`,
+                    border:`1px solid ${s.done ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.09)'}`,
                     borderRadius:'8px',color:'#f8fafc',fontSize:'14px',fontWeight:'700',outline:'none',
                   }}
                 />
