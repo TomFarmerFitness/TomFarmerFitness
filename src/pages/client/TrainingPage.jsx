@@ -1327,12 +1327,21 @@ function ExerciseCard({ exercise, sets, onUpdateSet, isFlagged, soreWarning, nig
           <button
             onClick={()=>handleToggleDone(idx, s)}
             style={{
-              width:'36px',height:'36px',borderRadius:'9px',flexShrink:0,
-              background: s.done ? '#22c55e' : 'rgba(255,255,255,0.06)',
-              border:'none',color: s.done ? '#fff' : '#475569',
-              fontSize:'14px',fontWeight:'800',cursor:'pointer',
+              flexShrink:0,
+              height:'36px',
+              padding: s.done ? '0' : '0 10px',
+              width: s.done ? '36px' : 'auto',
+              borderRadius:'9px',
+              background: s.done ? '#22c55e' : '#f97316',
+              border:'none',
+              color:'#fff',
+              fontSize: s.done ? '16px' : '11px',
+              fontWeight:'800',
+              cursor:'pointer',
               transition:'all 0.15s',
-            }}>{s.done ? '✓' : '○'}</button>
+              letterSpacing: s.done ? 0 : '0.03em',
+              whiteSpace:'nowrap',
+            }}>{s.done ? '✓' : 'LOG'}</button>
         </div>
       ))}
 
