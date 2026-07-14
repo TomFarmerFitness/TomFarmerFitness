@@ -350,6 +350,19 @@ function LogWeightModal({ existingEntry, onSave, onClose }) {
   const [date,    setDate]    = useState(existingEntry?.date     || todayISO());
   const [saving,  setSaving]  = useState(false);
 
+  // Push the sheet above the iOS keyboard when it opens
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const kbH = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+      if (overlayRef.current) overlayRef.current.style.paddingBottom = kbH + 'px';
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
+  }, []);
+
   async function handleSave() {
     if (!weight || isNaN(parseFloat(weight))) return;
     setSaving(true);
@@ -377,41 +390,46 @@ function LogWeightModal({ existingEntry, onSave, onClose }) {
       <div ref={sheetRef} style={{
         width: '100%', maxWidth: 430, background: 'var(--surface, #111)',
         borderRadius: '20px 20px 0 0',
-        padding: '0 16px calc(20px + env(safe-area-inset-bottom))',
-        maxHeight: '85vh', overflowY: 'auto',
+        maxHeight: '85vh',
+        display: 'flex', flexDirection: 'column',
       }}>
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '10px 0', flexShrink: 0 }}>
           <div style={{ width: 36, height: 4, borderRadius: 2, background: 'var(--border, #333)' }} />
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginBottom: 20, flexShrink: 0 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
             {isEdit ? 'Edit Weight Entry' : 'Log Weight'}
           </h2>
           <button onClick={() => close(onClose)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', fontSize: 22 }}>×</button>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Weight (kg) *</label>
-            <input type="number" step="0.1" min="30" max="300" placeholder="e.g. 82.5"
-              style={inputStyle} value={weight} onChange={e => setWeight(e.target.value)} autoFocus />
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, paddingBottom: 8 }}>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Weight (kg) *</label>
+              <input type="number" step="0.1" min="30" max="300" placeholder="e.g. 82.5"
+                style={inputStyle} value={weight} onChange={e => setWeight(e.target.value)} autoFocus />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Body Fat % <span style={{ color: 'var(--text-tertiary)' }}>(optional)</span></label>
+              <input type="number" step="0.1" min="3" max="60" placeholder="e.g. 18.5"
+                style={inputStyle} value={bodyFat} onChange={e => setBodyFat(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Date</label>
+              <input type="date" max={todayISO()} style={inputStyle} value={date} onChange={e => setDate(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Notes <span style={{ color: 'var(--text-tertiary)' }}>(optional)</span></label>
+              <input type="text" placeholder="e.g. After gym, dehydrated…"
+                style={inputStyle} value={notes} onChange={e => setNotes(e.target.value)} />
+            </div>
           </div>
-          <div>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Body Fat % <span style={{ color: 'var(--text-tertiary)' }}>(optional)</span></label>
-            <input type="number" step="0.1" min="3" max="60" placeholder="e.g. 18.5"
-              style={inputStyle} value={bodyFat} onChange={e => setBodyFat(e.target.value)} />
-          </div>
-          <div>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Date</label>
-            <input type="date" max={todayISO()} style={inputStyle} value={date} onChange={e => setDate(e.target.value)} />
-          </div>
-          <div>
-            <label style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'block', marginBottom: 6 }}>Notes <span style={{ color: 'var(--text-tertiary)' }}>(optional)</span></label>
-            <input type="text" placeholder="e.g. After gym, dehydrated…"
-              style={inputStyle} value={notes} onChange={e => setNotes(e.target.value)} />
-          </div>
+        </div>
+
+        <div style={{ padding: '12px 16px calc(20px + env(safe-area-inset-bottom))', flexShrink: 0 }}>
           <button onClick={handleSave} disabled={!weight || saving} style={{
-            marginTop: 4, padding: '14px', borderRadius: 12, border: 'none',
+            width: '100%', padding: '14px', borderRadius: 12, border: 'none',
             background: (!weight || saving) ? '#2a2a2a' : '#22c55e',
             color: (!weight || saving) ? 'var(--text-tertiary)' : '#000',
             fontSize: 15, fontWeight: 700, cursor: (!weight || saving) ? 'default' : 'pointer',

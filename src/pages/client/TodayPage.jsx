@@ -222,6 +222,7 @@ export default function TodayPage() {
   const [wlVisible,     setWlVisible]     = useState(false);
   const [wlWeight,      setWlWeight]      = useState('');
   const [wlSaving,      setWlSaving]      = useState(false);
+  const [wlKbOffset,    setWlKbOffset]    = useState(0);
 
   const today      = todayISO();
   const dayOfYear  = Math.floor((new Date() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
@@ -330,6 +331,17 @@ export default function TodayPage() {
     } catch { alert('Failed to save. Please try again.'); }
     finally { setWlSaving(false); }
   };
+
+  // Push weight-log sheet above the iOS keyboard when it opens
+  useEffect(() => {
+    if (!showWeightLog) { setWlKbOffset(0); return; }
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => setWlKbOffset(Math.max(0, window.innerHeight - vv.height - vv.offsetTop));
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update); };
+  }, [showWeightLog]);
 
   const totals = nutritionLogs.reduce((acc, r) => ({
     calories: acc.calories + (parseFloat(r.Calories) || 0),
@@ -573,33 +585,38 @@ export default function TodayPage() {
             WebkitBackdropFilter: wlVisible ? 'blur(2px)' : 'none',
             transition: 'background 0.25s ease',
             display: 'flex', alignItems: 'flex-end',
+            paddingBottom: wlKbOffset,
           }}
         >
           <div onClick={e => e.stopPropagation()} style={{
             width: '100%', maxWidth: '430px', margin: '0 auto',
             background: '#1e293b', borderRadius: '20px 20px 0 0',
-            padding: '0 20px 36px',
             border: '1px solid rgba(255,255,255,0.09)',
             transform: wlVisible ? 'translateY(0)' : 'translateY(100%)',
             transition: 'transform 0.32s cubic-bezier(0.16,1,0.3,1)',
+            display: 'flex', flexDirection: 'column',
           }}>
-            <div style={{ width: '36px', height: '4px', background: '#334155', borderRadius: '2px', margin: '14px auto 22px' }} />
-            <div style={{ fontSize: '19px', fontWeight: '800', marginBottom: '4px' }}>Log Weight</div>
-            <div style={{ fontSize: '13px', color: '#475569', marginBottom: '22px' }}>Daily tracking keeps you on course</div>
-            <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Weight (kg)</label>
-            <input type="number" inputMode="decimal"
-              placeholder={clientProfile?.CurrentWeightKg || '70.0'}
-              value={wlWeight} onChange={e => setWlWeight(e.target.value)}
-              autoFocus
-              style={{ ...inputStyle, fontSize: '22px', fontWeight: '700', textAlign: 'center', marginBottom: '16px', padding: '14px' }}
-            />
-            <button onClick={handleWeightSubmit} disabled={wlSaving || !wlWeight} style={{
-              width: '100%', padding: '14px',
-              background: wlSaving || !wlWeight ? 'rgba(249,115,22,0.28)' : '#f97316',
-              border: 'none', borderRadius: '12px',
-              color: '#fff', fontSize: '15px', fontWeight: '700',
-              cursor: wlSaving || !wlWeight ? 'not-allowed' : 'pointer',
-            }}>{wlSaving ? 'Saving…' : 'Save Weight'}</button>
+            <div style={{ padding: '0 20px' }}>
+              <div style={{ width: '36px', height: '4px', background: '#334155', borderRadius: '2px', margin: '14px auto 22px' }} />
+              <div style={{ fontSize: '19px', fontWeight: '800', marginBottom: '4px' }}>Log Weight</div>
+              <div style={{ fontSize: '13px', color: '#475569', marginBottom: '22px' }}>Daily tracking keeps you on course</div>
+              <label style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', display: 'block', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.6px' }}>Weight (kg)</label>
+              <input type="number" inputMode="decimal"
+                placeholder={clientProfile?.CurrentWeightKg || '70.0'}
+                value={wlWeight} onChange={e => setWlWeight(e.target.value)}
+                autoFocus
+                style={{ ...inputStyle, fontSize: '22px', fontWeight: '700', textAlign: 'center', marginBottom: '16px', padding: '14px' }}
+              />
+            </div>
+            <div style={{ padding: '0 20px calc(36px + env(safe-area-inset-bottom))', flexShrink: 0 }}>
+              <button onClick={handleWeightSubmit} disabled={wlSaving || !wlWeight} style={{
+                width: '100%', padding: '14px',
+                background: wlSaving || !wlWeight ? 'rgba(249,115,22,0.28)' : '#f97316',
+                border: 'none', borderRadius: '12px',
+                color: '#fff', fontSize: '15px', fontWeight: '700',
+                cursor: wlSaving || !wlWeight ? 'not-allowed' : 'pointer',
+              }}>{wlSaving ? 'Saving…' : 'Save Weight'}</button>
+            </div>
           </div>
         </div>
       )}
