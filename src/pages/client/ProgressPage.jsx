@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ReferenceLine, ResponsiveContainer, Dot,
@@ -384,7 +385,7 @@ function LogWeightModal({ existingEntry, onSave, onClose }) {
     color: 'var(--text-primary)', fontSize: 15, outline: 'none',
   };
 
-  return (
+  return createPortal(
     <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) close(onClose); }}
       style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div ref={sheetRef} style={{
@@ -438,7 +439,8 @@ function LogWeightModal({ existingEntry, onSave, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -494,7 +496,7 @@ function PhotoUploadModal({ clientId, clientName, onSave, onClose }) {
     color: 'var(--text-primary)', fontSize: 15, outline: 'none',
   };
 
-  return (
+  return createPortal(
     <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) close(onClose); }}
       style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div ref={sheetRef} style={{
@@ -585,7 +587,8 @@ function PhotoUploadModal({ clientId, clientName, onSave, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -608,7 +611,7 @@ function PhotoViewer({ photo, onClose }) {
     setTimeout(onClose, 150);
   }
 
-  return (
+  return createPortal(
     <div ref={overlayRef} onClick={close} style={{
       position: 'fixed', inset: 0, zIndex: 300,
       background: 'rgba(0,0,0,0.92)',
@@ -630,7 +633,8 @@ function PhotoViewer({ photo, onClose }) {
         </div>
         {photo.note && <div style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>{photo.note}</div>}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -649,7 +653,7 @@ function CompareModal({ photos, onClose }) {
     width: '100%', outline: 'none',
   };
 
-  return (
+  return createPortal(
     <div onClick={onClose} style={{
       position: 'fixed', inset: 0, zIndex: 300,
       background: 'rgba(0,0,0,0.95)',
@@ -703,7 +707,8 @@ function CompareModal({ photos, onClose }) {
           </div>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

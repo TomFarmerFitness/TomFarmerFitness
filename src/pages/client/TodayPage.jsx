@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { readSheet } from '../../utils/sheets';
@@ -321,9 +322,9 @@ export default function TodayPage() {
     setWlSaving(true);
     try {
       await safeAppend('BodyMetrics', {
-        MetricID: `BM_${Date.now()}`, ClientID: user.clientID,
-        Date: today, WeightKg: wlWeight,
-        BodyFatPct: '', Notes: '', LoggedAt: new Date().toISOString(),
+        MetricID: `BM-${Date.now()}`, ClientID: user.clientID,
+        Date: today, Weight: wlWeight,
+        BodyFat: '', Notes: '', LoggedAt: new Date().toISOString(),
       });
       closeModal(setShowWeightLog, setWlVisible);
       setWlWeight('');
@@ -575,7 +576,7 @@ export default function TodayPage() {
       )}
 
       {/* ── Weight Log Modal ── */}
-      {showWeightLog && (
+      {showWeightLog && createPortal(
         <div
           onClick={() => closeModal(setShowWeightLog, setWlVisible)}
           style={{
@@ -618,7 +619,8 @@ export default function TodayPage() {
               }}>{wlSaving ? 'Saving…' : 'Save Weight'}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
