@@ -1805,45 +1805,74 @@ export default function ClientDetailPage() {
               ))}
             </div>
 
-            {/* Food entries */}
+            {/* Food entries — grouped by meal */}
             <div style={cardStyle}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-                <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>
-                  Food Log
-                </h3>
-                <span style={{ fontSize: 12, color: '#475569' }}>
-                  {dayLogs.length} {dayLogs.length === 1 ? 'entry' : 'entries'}
-                </span>
+                <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>Food Log</h3>
+                <span style={{ fontSize: 12, color: '#475569' }}>{dayLogs.length} {dayLogs.length === 1 ? 'entry' : 'entries'}</span>
               </div>
               {dayLogs.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '32px 0', color: '#475569', fontSize: 14 }}>
                   Nothing logged for this day
                 </div>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {dayLogs.map((entry, i) => (
-                    <div key={entry.logId || i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '10px 14px', gap: 12 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.foodName}</div>
-                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{entry.mealType !== entry.foodName ? entry.mealType : ''}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
-                        {[
-                          { val: Math.round(entry.calories), unit: 'kcal', color: '#f97316' },
-                          { val: `${Math.round(entry.protein)}g`, unit: 'P', color: '#4ade80' },
-                          { val: `${Math.round(entry.carbs)}g`, unit: 'C', color: '#60a5fa' },
-                          { val: `${Math.round(entry.fats)}g`, unit: 'F', color: '#fbbf24' },
-                        ].map(({ val, unit, color }) => (
-                          <div key={unit} style={{ textAlign: 'right' }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
-                            <div style={{ fontSize: 10, color: '#475569' }}>{unit}</div>
+              ) : (() => {
+                const MEAL_ORDER = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+                const grouped = {};
+                dayLogs.forEach(e => { const mt = e.mealType || 'Other'; if (!grouped[mt]) grouped[mt] = []; grouped[mt].push(e); });
+                const mealKeys = [...MEAL_ORDER.filter(m => grouped[m]), ...Object.keys(grouped).filter(m => !MEAL_ORDER.includes(m))];
+                const macrocols = [
+                  { key: 'calories', unit: 'kcal', color: '#f97316' },
+                  { key: 'protein',  unit: 'P',    color: '#4ade80' },
+                  { key: 'carbs',    unit: 'C',    color: '#60a5fa' },
+                  { key: 'fats',     unit: 'F',    color: '#fbbf24' },
+                ];
+                return (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+                    {mealKeys.map(meal => {
+                      const items = grouped[meal];
+                      const sub = items.reduce((a, r) => ({ calories: a.calories+r.calories, protein: a.protein+r.protein, carbs: a.carbs+r.carbs, fats: a.fats+r.fats }), { calories:0, protein:0, carbs:0, fats:0 });
+                      return (
+                        <div key={meal}>
+                          {/* Meal header */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.7px' }}>{meal}</div>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: '#f97316' }}>{Math.round(sub.calories)} kcal</div>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                          {/* Items */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                            {items.map((entry, i) => (
+                              <div key={entry.logId || i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.04)', borderRadius: 9, padding: '9px 12px', gap: 12 }}>
+                                <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 500, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                  {entry.foodName}
+                                </div>
+                                <div style={{ display: 'flex', gap: 12, flexShrink: 0 }}>
+                                  {macrocols.map(({ key, unit, color }) => (
+                                    <div key={unit} style={{ textAlign: 'right', minWidth: 32 }}>
+                                      <div style={{ fontSize: 12, fontWeight: 700, color }}>{key === 'calories' ? Math.round(entry[key]) : `${Math.round(entry[key])}g`}</div>
+                                      <div style={{ fontSize: 10, color: '#475569' }}>{unit}</div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Meal subtotal (only if >1 item) */}
+                          {items.length > 1 && (
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '5px 12px 0', marginTop: 3, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                              {macrocols.map(({ key, unit, color }) => (
+                                <div key={unit} style={{ textAlign: 'right', minWidth: 32 }}>
+                                  <div style={{ fontSize: 12, fontWeight: 700, color }}>{key === 'calories' ? Math.round(sub[key]) : `${Math.round(sub[key])}g`}</div>
+                                  <div style={{ fontSize: 10, color: '#475569' }}>{unit}</div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </div>
           </>
         );
