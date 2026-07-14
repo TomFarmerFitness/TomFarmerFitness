@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { readSheet, appendToSheet, upsertRow, invalidateCache } from '../../utils/sheets';
+import { readSheet, appendToSheet, upsertRow, deleteRowsWhere, invalidateCache } from '../../utils/sheets';
 import config from '../../config';
 import { CreateProgramModal, parsePhasesFromProgram, generateId, totalProgramWeeks } from '../../components/trainer/CreateProgramModal';
 
@@ -13,30 +13,6 @@ const GOAL_COLORS = {
   'Strength':        { bg: 'rgba(239,68,68,0.15)',   border: 'rgba(239,68,68,0.4)',   text: '#f87171' },
   'General Fitness': { bg: 'rgba(34,197,94,0.15)',   border: 'rgba(34,197,94,0.4)',   text: '#4ade80' },
 };
-
-// ─── Apps Script helpers (write ops not in sheets.js) ─────────────────────────
-
-async function callProxy(body) {
-  const url = config.APPS_SCRIPT_URL;
-  if (!url || url.startsWith('YOUR_')) throw new Error('apps_script_not_configured');
-  const r = await fetch(url, {
-    method: 'POST',
-    redirect: 'follow',
-    body: JSON.stringify(body),
-    // No Content-Type header — avoids CORS preflight for Apps Script
-  });
-  const d = await r.json();
-  if (!d.success) throw new Error(d.error || 'proxy_error');
-  return d;
-}
-
-async function upsertSheetRow(tab, idColumn, id, rowData) {
-  return callProxy({ action: 'upsertRow', tab, idColumn, id, row: rowData });
-}
-
-async function deleteSheetRowsWhere(tab, column, value) {
-  return callProxy({ action: 'deleteRowsWhere', tab, column, value });
-}
 
 
 // ─── FilterBar ────────────────────────────────────────────────────────────────
@@ -640,7 +616,7 @@ export default function ProgramLibraryPage() {
       CreatedAt: id ? undefined : todayISO(),
     };
     if (id) delete rowData.CreatedAt;
-    await upsertSheetRow('Programs', 'ProgramID', programId, rowData);
+    await upsertRow('Programs', 'ProgramID', programId, rowData);
 
     // Optimistic update
     const newProg = { id: programId, name, description, goal, daysPerWeek,
@@ -662,7 +638,7 @@ export default function ProgramLibraryPage() {
       PhasesJSON: copy.phases ? JSON.stringify(copy.phases) : undefined,
       CreatedAt: todayISO(),
     };
-    await upsertSheetRow('Programs', 'ProgramID', newId, rowData);
+    await upsertRow('Programs', 'ProgramID', newId, rowData);
     setPrograms(prev => [copy, ...prev]);
   };
 
@@ -690,8 +666,8 @@ export default function ProgramLibraryPage() {
     try {
       invalidateCache('Programs');
       invalidateCache('ClientPrograms');
-      await deleteSheetRowsWhere('Programs', 'ProgramID', progId);
-      await deleteSheetRowsWhere('ClientPrograms', 'ProgramID', progId);
+      await deleteRowsWhere('Programs', 'ProgramID', progId);
+      await deleteRowsWhere('ClientPrograms', 'ProgramID', progId);
     } catch (e) {
       console.error('Delete failed:', e);
       alert('Could not delete program: ' + (e?.message || String(e)));
