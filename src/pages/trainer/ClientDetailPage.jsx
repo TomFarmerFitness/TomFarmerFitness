@@ -549,12 +549,14 @@ export default function ClientDetailPage() {
   const [showEditProgram, setShowEditProgram] = useState(false);
   const [checkins,      setCheckins]      = useState([]);
   const [aiQuestions,   setAiQuestions]   = useState([]);
+  const [nutritionLogs, setNutritionLogs] = useState([]);
+  const [nutritionDate, setNutritionDate] = useState(() => new Date().toISOString().slice(0,10));
 
   useEffect(() => {
     async function load() {
       try {
         setLoading(true);
-        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows, rawExercises, preCheckins, aiQs] = await Promise.all([
+        const [clients, workoutLogs, bodyMetrics, progressPhotos, macroAdj, progRows, rawExercises, preCheckins, aiQs, nutritionRows] = await Promise.all([
           readSheet('Clients'),
           readSheet('WorkoutLogs'),
           readSheet('BodyMetrics').catch(() => []),
@@ -564,6 +566,7 @@ export default function ClientDetailPage() {
           readSheet('Exercises').catch(() => []),
           readSheet('PreWorkoutCheckins').catch(() => []),
           readSheet('AIQuestions').catch(() => []),
+          readSheet('NutritionLogs').catch(() => []),
         ]);
 
         const found = clients.find(c => c.ClientID === clientId);
@@ -619,6 +622,24 @@ export default function ClientDetailPage() {
             .filter(r => r.ClientID === clientId)
             .map(r => ({ photoId: r.PhotoID, date: (r.Date || '').slice(0,10), photoType: r.PhotoType, note: r.Note, driveViewURL: r.DriveViewURL, driveThumbURL: r.DriveThumbURL }))
             .filter(r => r.date && r.driveViewURL)
+        );
+
+        setNutritionLogs(
+          (nutritionRows || [])
+            .filter(r => r.ClientID === clientId)
+            .map(r => ({
+              logId:    r.LogID || r.NutritionLogID || '',
+              date:     (r.Date || '').slice(0, 10),
+              mealType: r.MealType || r.MealName || 'Meal',
+              foodName: r.FoodName || r.MealName || '—',
+              calories: parseFloat(r.Calories) || 0,
+              protein:  parseFloat(r.Protein)  || 0,
+              carbs:    parseFloat(r.Carbs)    || 0,
+              fats:     parseFloat(r.Fats)     || 0,
+              loggedAt: r.LoggedAt || '',
+            }))
+            .filter(r => r.date)
+            .sort((a, b) => a.date !== b.date ? a.date.localeCompare(b.date) : a.loggedAt.localeCompare(b.loggedAt))
         );
       } catch (err) {
         setError(err.message);
@@ -842,7 +863,7 @@ export default function ClientDetailPage() {
 
       {/* Section tabs */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 24 }}>
-        {[['overview','Overview'],['progress','Progress & Photos']].map(([val, label]) => (
+        {[['overview','Overview'],['nutrition','Nutrition'],['progress','Progress & Photos']].map(([val, label]) => (
           <button key={val} onClick={() => setActiveSection(val)} style={{
             padding: '8px 18px', borderRadius: 10, border: 'none', cursor: 'pointer',
             fontSize: 13, fontWeight: 600,
@@ -1717,6 +1738,116 @@ export default function ClientDetailPage() {
         </div>
       )}
 
+
+      {/* ══════════════════ NUTRITION SECTION ══════════════════ */}
+      {activeSection === 'nutrition' && (() => {
+        const dayLogs = nutritionLogs.filter(r => r.date === nutritionDate);
+        const totals  = dayLogs.reduce((acc, r) => ({
+          calories: acc.calories + r.calories,
+          protein:  acc.protein  + r.protein,
+          carbs:    acc.carbs    + r.carbs,
+          fats:     acc.fats     + r.fats,
+        }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
+        const targets = {
+          calories: parseFloat(client.DailyCalories  || client.TargetCalories) || 0,
+          protein:  parseFloat(client.ProteinTarget   || client.TargetProtein)  || 0,
+          carbs:    parseFloat(client.CarbTarget      || client.TargetCarbs)    || 0,
+          fats:     parseFloat(client.FatTarget       || client.TargetFats)     || 0,
+        };
+
+        // Build list of logged dates for the "recent" nav
+        const loggedDates = [...new Set(nutritionLogs.map(r => r.date))].sort((a,b) => b.localeCompare(a));
+        const currentIdx  = loggedDates.indexOf(nutritionDate);
+
+        return (
+          <>
+            {/* Date nav */}
+            <div style={{ ...cardStyle, marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <button
+                onClick={() => { const i = loggedDates.indexOf(nutritionDate); if (i < loggedDates.length - 1) setNutritionDate(loggedDates[i + 1]); }}
+                disabled={currentIdx >= loggedDates.length - 1}
+                style={{ background: 'none', border: 'none', cursor: currentIdx >= loggedDates.length - 1 ? 'default' : 'pointer', color: currentIdx >= loggedDates.length - 1 ? '#334155' : '#94a3b8', fontSize: 20, lineHeight: 1, padding: '0 4px' }}>‹</button>
+              <div style={{ flex: 1, textAlign: 'center' }}>
+                <input type="date" value={nutritionDate} onChange={e => setNutritionDate(e.target.value)}
+                  max={new Date().toISOString().slice(0,10)}
+                  style={{ background: 'transparent', border: 'none', color: '#e2e8f0', fontSize: 15, fontWeight: 700, outline: 'none', cursor: 'pointer', textAlign: 'center' }} />
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>
+                  {loggedDates.length} days logged total
+                </div>
+              </div>
+              <button
+                onClick={() => { const i = loggedDates.indexOf(nutritionDate); if (i > 0) setNutritionDate(loggedDates[i - 1]); }}
+                disabled={currentIdx <= 0}
+                style={{ background: 'none', border: 'none', cursor: currentIdx <= 0 ? 'default' : 'pointer', color: currentIdx <= 0 ? '#334155' : '#94a3b8', fontSize: 20, lineHeight: 1, padding: '0 4px' }}>›</button>
+            </div>
+
+            {/* Macro summary cards */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+              {[
+                { label: 'Calories', val: Math.round(totals.calories), target: targets.calories, unit: 'kcal', color: '#f97316' },
+                { label: 'Protein',  val: Math.round(totals.protein),  target: targets.protein,  unit: 'g',    color: '#4ade80' },
+                { label: 'Carbs',    val: Math.round(totals.carbs),    target: targets.carbs,    unit: 'g',    color: '#60a5fa' },
+                { label: 'Fats',     val: Math.round(totals.fats),     target: targets.fats,     unit: 'g',    color: '#fbbf24' },
+              ].map(({ label, val, target, unit, color }) => (
+                <div key={label} style={{ ...cardStyle, padding: '14px 12px', textAlign: 'center' }}>
+                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{label}</div>
+                  <div style={{ fontSize: 22, fontWeight: 700, color, lineHeight: 1 }}>{val}</div>
+                  {target > 0 && (
+                    <>
+                      <div style={{ fontSize: 11, color: '#475569', margin: '2px 0 6px' }}>/ {target} {unit}</div>
+                      <div style={{ height: 3, background: 'rgba(255,255,255,0.08)', borderRadius: 2 }}>
+                        <div style={{ height: '100%', borderRadius: 2, background: color, width: `${Math.min(100, Math.round(val / target * 100))}%`, transition: 'width 0.4s' }} />
+                      </div>
+                    </>
+                  )}
+                  {target === 0 && <div style={{ fontSize: 11, color: '#334155', marginTop: 2 }}>{unit}</div>}
+                </div>
+              ))}
+            </div>
+
+            {/* Food entries */}
+            <div style={cardStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                <h3 style={{ color: '#e2e8f0', fontSize: '14px', fontWeight: '600', margin: 0 }}>
+                  Food Log
+                </h3>
+                <span style={{ fontSize: 12, color: '#475569' }}>
+                  {dayLogs.length} {dayLogs.length === 1 ? 'entry' : 'entries'}
+                </span>
+              </div>
+              {dayLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '32px 0', color: '#475569', fontSize: 14 }}>
+                  Nothing logged for this day
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {dayLogs.map((entry, i) => (
+                    <div key={entry.logId || i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.04)', borderRadius: 10, padding: '10px 14px', gap: 12 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{entry.foodName}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>{entry.mealType !== entry.foodName ? entry.mealType : ''}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 14, flexShrink: 0 }}>
+                        {[
+                          { val: Math.round(entry.calories), unit: 'kcal', color: '#f97316' },
+                          { val: `${Math.round(entry.protein)}g`, unit: 'P', color: '#4ade80' },
+                          { val: `${Math.round(entry.carbs)}g`, unit: 'C', color: '#60a5fa' },
+                          { val: `${Math.round(entry.fats)}g`, unit: 'F', color: '#fbbf24' },
+                        ].map(({ val, unit, color }) => (
+                          <div key={unit} style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color }}>{val}</div>
+                            <div style={{ fontSize: 10, color: '#475569' }}>{unit}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
 
       {/* ══════════════════ PROGRESS SECTION ══════════════════ */}
       {activeSection === 'progress' && (
