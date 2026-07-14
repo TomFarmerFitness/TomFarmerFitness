@@ -386,7 +386,7 @@ function LogWeightModal({ existingEntry, onSave, onClose }) {
 
   return (
     <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) close(onClose); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div ref={sheetRef} style={{
         width: '100%', maxWidth: 430, background: 'var(--surface, #111)',
         borderRadius: '20px 20px 0 0',
@@ -427,7 +427,7 @@ function LogWeightModal({ existingEntry, onSave, onClose }) {
           </div>
         </div>
 
-        <div style={{ padding: '12px 16px calc(20px + env(safe-area-inset-bottom))', flexShrink: 0 }}>
+        <div style={{ padding: '12px 16px calc(24px + env(safe-area-inset-bottom, 20px))', flexShrink: 0 }}>
           <button onClick={handleSave} disabled={!weight || saving} style={{
             width: '100%', padding: '14px', borderRadius: 12, border: 'none',
             background: (!weight || saving) ? '#2a2a2a' : '#22c55e',
@@ -496,7 +496,7 @@ function PhotoUploadModal({ clientId, clientName, onSave, onClose }) {
 
   return (
     <div ref={overlayRef} onClick={e => { if (e.target === overlayRef.current) close(onClose); }}
-      style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
+      style={{ position: 'fixed', inset: 0, zIndex: 300, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
       <div ref={sheetRef} style={{
         width: '100%', maxWidth: 430, background: 'var(--surface, #111)',
         borderRadius: '20px 20px 0 0',

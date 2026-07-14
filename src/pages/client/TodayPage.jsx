@@ -608,7 +608,7 @@ export default function TodayPage() {
                 style={{ ...inputStyle, fontSize: '22px', fontWeight: '700', textAlign: 'center', marginBottom: '16px', padding: '14px' }}
               />
             </div>
-            <div style={{ padding: '0 20px calc(36px + env(safe-area-inset-bottom))', flexShrink: 0 }}>
+            <div style={{ padding: '0 20px calc(36px + env(safe-area-inset-bottom, 20px))', flexShrink: 0 }}>
               <button onClick={handleWeightSubmit} disabled={wlSaving || !wlWeight} style={{
                 width: '100%', padding: '14px',
                 background: wlSaving || !wlWeight ? 'rgba(249,115,22,0.28)' : '#f97316',
