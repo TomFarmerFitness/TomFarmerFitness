@@ -1057,11 +1057,16 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
       const computedDaysPerWeek = resolvedPhases[0]?.daysPerWeek || data.daysPerWeek;
       const days = resolvedPhases[0]?.days || [];
 
+      // Strip weekDays before saving — it's a full per-week expansion that makes
+      // PhasesJSON huge (100-200KB), causing Google's CDN to reject the request.
+      // TrainingPage falls back to phase.days (first week) when weekDays is absent.
+      const phasesForSave = resolvedPhases.map(({ weekDays: _wd, ...rest }) => rest);
+
       await onSave({
         ...data,
         daysPerWeek: computedDaysPerWeek,
         days,
-        phases: resolvedPhases,
+        phases: phasesForSave,
         durationWeeks,
         id: initial?.id,
       });
