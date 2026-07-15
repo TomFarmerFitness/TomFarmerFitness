@@ -1135,24 +1135,30 @@ function HowToSection({ libraryEx }) {
 // ─── Swap Modal ───────────────────────────────────────────────────────────────
 function SwapModal({ exercise, allExercises, onConfirm, onClose }) {
   const [search, setSearch] = useState('');
+  const [showAll, setShowAll] = useState(false);
   const mg = (exercise.muscleGroup || '').toLowerCase();
+
+  const isSameMuscle = (e) => {
+    const eMg = (e.PrimaryMuscle || '').toLowerCase();
+    return mg && (eMg.includes(mg) || mg.includes(eMg));
+  };
 
   const filtered = allExercises
     .filter(e => {
       if ((e.Name || '').toLowerCase() === (exercise.name || '').toLowerCase()) return false;
+      // Default: only same muscle group. showAll or active search widens the list.
+      if (!showAll && !search && !isSameMuscle(e)) return false;
       const q = search.toLowerCase();
       return !q || (e.Name || '').toLowerCase().includes(q) || (e.PrimaryMuscle || '').toLowerCase().includes(q);
     })
     .sort((a, b) => {
-      const aMg = (a.PrimaryMuscle || '').toLowerCase();
-      const bMg = (b.PrimaryMuscle || '').toLowerCase();
-      const aMatch = aMg.includes(mg) || mg.includes(aMg);
-      const bMatch = bMg.includes(mg) || mg.includes(bMg);
+      const aMatch = isSameMuscle(a);
+      const bMatch = isSameMuscle(b);
       if (aMatch && !bMatch) return -1;
       if (!aMatch && bMatch) return 1;
       return (a.Name || '').localeCompare(b.Name || '');
     })
-    .slice(0, 40);
+    .slice(0, 50);
 
   return (
     <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,0.7)', backdropFilter:'blur(3px)', display:'flex', alignItems:'flex-end' }}
@@ -1161,7 +1167,12 @@ function SwapModal({ exercise, allExercises, onConfirm, onClose }) {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'14px' }}>
           <div>
             <div style={{ fontSize:'15px', fontWeight:'800', color:'#f8fafc' }}>⇄ Swap Exercise</div>
-            <div style={{ fontSize:'12px', color:'#64748b', marginTop:'2px' }}>Replacing: <em>{exercise.name}</em></div>
+            <div style={{ fontSize:'12px', color:'#64748b', marginTop:'2px' }}>
+              Replacing: <em>{exercise.name}</em>
+              {exercise.muscleGroup && !showAll && (
+                <span style={{ marginLeft:6, color:'#f97316' }}>· {exercise.muscleGroup} only</span>
+              )}
+            </div>
           </div>
           <button onClick={onClose} style={{ background:'rgba(255,255,255,0.07)', border:'none', borderRadius:'8px', color:'#94a3b8', fontSize:'18px', width:'32px', height:'32px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
         </div>
@@ -1169,11 +1180,21 @@ function SwapModal({ exercise, allExercises, onConfirm, onClose }) {
           type="text" placeholder="Search exercises..."
           value={search} onChange={e => setSearch(e.target.value)}
           autoFocus
-          style={{ padding:'9px 12px', background:'#0f172a', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'9px', color:'#f8fafc', fontSize:'13px', outline:'none', marginBottom:'12px', width:'100%', boxSizing:'border-box' }}
+          style={{ padding:'9px 12px', background:'#0f172a', border:'1px solid rgba(255,255,255,0.1)', borderRadius:'9px', color:'#f8fafc', fontSize:'13px', outline:'none', marginBottom:'8px', width:'100%', boxSizing:'border-box' }}
         />
+        <button onClick={() => setShowAll(v => !v)} style={{
+          alignSelf:'flex-start', marginBottom:'10px', background:'none', border:'none',
+          color: showAll ? '#f97316' : '#475569', fontSize:'12px', cursor:'pointer', padding:0,
+          textDecoration:'underline', textDecorationColor: showAll ? '#f97316' : '#334155',
+        }}>
+          {showAll ? '← Same muscle group only' : 'Show all exercises'}
+        </button>
         <div style={{ overflowY:'auto', flex:1 }}>
           {filtered.length === 0 && (
-            <div style={{ textAlign:'center', color:'#475569', fontSize:'13px', padding:'20px 0' }}>No exercises found.</div>
+            <div style={{ textAlign:'center', color:'#475569', fontSize:'13px', padding:'20px 0' }}>
+              No exercises found.
+              {!showAll && <div style={{marginTop:8}}><button onClick={()=>setShowAll(true)} style={{background:'none',border:'none',color:'#f97316',fontSize:'12px',cursor:'pointer',textDecoration:'underline'}}>Show all exercises</button></div>}
+            </div>
           )}
           {filtered.map((e, i) => {
             const mc = MUSCLE_COLORS[e.PrimaryMuscle] || '#64748b';
@@ -1861,14 +1882,29 @@ function ProgressionModal({ updates, onConfirm, onDismiss, saving }) {
   );
 }
 
+// ─── Workout session persistence ─────────────────────────────────────────────
+const WS_KEY = 'tff_active_workout';
+function loadSavedWorkout() {
+  try {
+    const raw = sessionStorage.getItem(WS_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    // Only restore if we were actually mid-workout
+    if (s.view !== 'active' && s.view !== 'preWorkout') return null;
+    return s;
+  } catch { return null; }
+}
+
 // ─── Main TrainingPage ─────────────────────────────────────────────────────────
 export default function TrainingPage() {
   const { user } = useAuth();
 
   // ── View state: 'weekly' | 'preWorkout' | 'active' ──
-  const [view,         setView]         = useState('weekly');
-  const [selectedDate, setSelectedDate] = useState(todayISO());
-  const [actualDate,   setActualDate]   = useState(todayISO());
+  // Lazily restore from sessionStorage so navigating away and back mid-workout
+  // picks up exactly where the client left off.
+  const [view,         setView]         = useState(() => loadSavedWorkout()?.view ?? 'weekly');
+  const [selectedDate, setSelectedDate] = useState(() => loadSavedWorkout()?.selectedDate ?? todayISO());
+  const [actualDate,   setActualDate]   = useState(() => loadSavedWorkout()?.actualDate   ?? todayISO());
   const [sessions,     setSessions]     = useState([]);
   const [workoutLogs,  setWorkoutLogs]  = useState([]);
   const [clientProfile,setClientProfile]= useState(null);
@@ -1881,12 +1917,12 @@ export default function TrainingPage() {
   const [saving,       setSaving]       = useState(false);
   const [error,        setError]        = useState(null);
 
-  // ── Active workout state ──
-  const [preWorkoutData,   setPreWorkoutData]   = useState(null);
-  const [adjustments,      setAdjustments]      = useState([]);
-  const [activeExercises,  setActiveExercises]  = useState([]);
-  const [activeSets,       setActiveSets]       = useState({});
-  const [activeSession,    setActiveSession]    = useState(null);
+  // ── Active workout state — restored from sessionStorage if mid-workout ──
+  const [preWorkoutData,   setPreWorkoutData]   = useState(() => loadSavedWorkout()?.preWorkoutData   ?? null);
+  const [adjustments,      setAdjustments]      = useState(() => loadSavedWorkout()?.adjustments      ?? []);
+  const [activeExercises,  setActiveExercises]  = useState(() => loadSavedWorkout()?.activeExercises  ?? []);
+  const [activeSets,       setActiveSets]       = useState(() => loadSavedWorkout()?.activeSets       ?? {});
+  const [activeSession,    setActiveSession]    = useState(() => loadSavedWorkout()?.activeSession    ?? null);
   const [allExercises,     setAllExercises]     = useState([]);
   const [prepping,         setPrepping]         = useState(false);
   const [showSessionPicker,setShowSessionPicker]= useState(false);
@@ -1987,6 +2023,20 @@ export default function TrainingPage() {
   }, [user?.clientID]);
 
   useEffect(()=>{ fetchData(); }, [fetchData]);
+
+  // ── Persist active workout state across tab navigation ──
+  useEffect(() => {
+    if (view === 'active' || view === 'preWorkout') {
+      try {
+        sessionStorage.setItem(WS_KEY, JSON.stringify({
+          view, selectedDate, actualDate,
+          preWorkoutData, adjustments, activeExercises, activeSets, activeSession,
+        }));
+      } catch {}
+    } else {
+      try { sessionStorage.removeItem(WS_KEY); } catch {}
+    }
+  }, [view, selectedDate, actualDate, preWorkoutData, adjustments, activeExercises, activeSets, activeSession]);
 
   // Derived
   const selectedDayIdx   = weekDays.findIndex(d=>d.date===selectedDate);
