@@ -1882,6 +1882,261 @@ function ProgressionModal({ updates, onConfirm, onDismiss, saving }) {
   );
 }
 
+// ─── Activity logging ─────────────────────────────────────────────────────────
+const ACTIVITIES = [
+  { category:'Cardio', items:[
+    { name:'Running',        icon:'🏃' },
+    { name:'Cycling',        icon:'🚴' },
+    { name:'Swimming',       icon:'🏊' },
+    { name:'Rowing',         icon:'🚣' },
+    { name:'Jump Rope',      icon:'🪢' },
+    { name:'Walking',        icon:'🚶' },
+    { name:'Elliptical',     icon:'⚙️' },
+    { name:'Stair Climbing', icon:'🪜' },
+  ]},
+  { category:'Sports', items:[
+    { name:'Soccer',         icon:'⚽' },
+    { name:'Basketball',     icon:'🏀' },
+    { name:'Tennis',         icon:'🎾' },
+    { name:'Rugby',          icon:'🏉' },
+    { name:'Cricket',        icon:'🏏' },
+    { name:'Volleyball',     icon:'🏐' },
+    { name:'Badminton',      icon:'🏸' },
+    { name:'AFL',            icon:'🏈' },
+  ]},
+  { category:'Outdoor', items:[
+    { name:'Hiking',         icon:'🥾' },
+    { name:'Surfing',        icon:'🏄' },
+    { name:'Rock Climbing',  icon:'🧗' },
+    { name:'Skiing',         icon:'⛷️' },
+    { name:'Kayaking',       icon:'🛶' },
+  ]},
+  { category:'Other', items:[
+    { name:'Boxing',         icon:'🥊' },
+    { name:'Martial Arts',   icon:'🥋' },
+    { name:'Yoga',           icon:'🧘' },
+    { name:'Dancing',        icon:'💃' },
+    { name:'CrossFit',       icon:'🔥' },
+  ]},
+];
+const ALL_ACTIVITY_ITEMS = ACTIVITIES.flatMap(c => c.items.map(i => ({ ...i, category: c.category })));
+const INTENSITY_OPTS = [
+  { label:'Easy',     value:'Easy',     color:'#22c55e' },
+  { label:'Moderate', value:'Moderate', color:'#f59e0b' },
+  { label:'Hard',     value:'Hard',     color:'#ef4444' },
+];
+
+function AddActivityModal({ date, onSave, onClose }) {
+  const [step, setStep]       = useState('pick');   // 'pick' | 'detail'
+  const [selected, setSelected] = useState(null);
+  const [duration, setDuration] = useState('');
+  const [intensity, setIntensity] = useState('Moderate');
+  const [notes, setNotes]     = useState('');
+  const [saving, setSaving]   = useState(false);
+
+  const handleConfirm = async () => {
+    if (!selected || !duration) return;
+    setSaving(true);
+    try {
+      await onSave({ activity: selected, duration: parseInt(duration), intensity, notes });
+      onClose();
+    } catch { setSaving(false); }
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, zIndex:300, background:'rgba(0,0,0,0.7)',
+      backdropFilter:'blur(4px)', display:'flex', alignItems:'flex-end' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ width:'100%', maxWidth:'430px', margin:'0 auto', background:'#1e293b',
+        borderRadius:'20px 20px 0 0', padding:'20px 16px 40px',
+        border:'1px solid rgba(255,255,255,0.1)', maxHeight:'85vh', display:'flex', flexDirection:'column' }}>
+
+        {/* Header */}
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'16px', flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:'15px', fontWeight:'800', color:'#f8fafc' }}>
+              {step === 'pick' ? '+ Log Activity' : `${selected?.icon} ${selected?.name}`}
+            </div>
+            <div style={{ fontSize:'12px', color:'#64748b', marginTop:'2px' }}>
+              {step === 'pick' ? 'Choose an activity' : 'Add some details'}
+            </div>
+          </div>
+          <button onClick={onClose} style={{ background:'rgba(255,255,255,0.07)', border:'none',
+            borderRadius:'8px', color:'#94a3b8', fontSize:'18px', width:'32px', height:'32px',
+            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center' }}>×</button>
+        </div>
+
+        {step === 'pick' ? (
+          /* Activity picker */
+          <div style={{ overflowY:'auto', flex:1 }}>
+            {ACTIVITIES.map(cat => (
+              <div key={cat.category} style={{ marginBottom:'16px' }}>
+                <div style={{ fontSize:'10px', fontWeight:'700', color:'#475569',
+                  textTransform:'uppercase', letterSpacing:'1px', marginBottom:'8px' }}>
+                  {cat.category}
+                </div>
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'8px' }}>
+                  {cat.items.map(item => (
+                    <button key={item.name} onClick={() => { setSelected({ ...item, category: cat.category }); setStep('detail'); }}
+                      style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'5px',
+                        padding:'10px 4px', borderRadius:'12px', border:'1px solid rgba(255,255,255,0.08)',
+                        background:'rgba(255,255,255,0.03)', cursor:'pointer', transition:'all 0.15s' }}>
+                      <span style={{ fontSize:'22px' }}>{item.icon}</span>
+                      <span style={{ fontSize:'10px', fontWeight:'600', color:'#94a3b8',
+                        textAlign:'center', lineHeight:1.2 }}>{item.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* Details step */
+          <div style={{ display:'flex', flexDirection:'column', gap:'16px', overflowY:'auto', flex:1 }}>
+            {/* Duration */}
+            <div>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#64748b',
+                textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:'8px' }}>
+                Duration (minutes)
+              </label>
+              <div style={{ display:'flex', gap:'8px', flexWrap:'wrap' }}>
+                {[15,20,30,45,60,75,90].map(m => (
+                  <button key={m} onClick={() => setDuration(String(m))}
+                    style={{ padding:'8px 14px', borderRadius:'20px', border:'none',
+                      fontSize:'13px', fontWeight:'600', cursor:'pointer',
+                      background: duration === String(m) ? '#f97316' : 'rgba(255,255,255,0.06)',
+                      color: duration === String(m) ? '#fff' : '#94a3b8', transition:'all 0.12s' }}>
+                    {m}m
+                  </button>
+                ))}
+                <input type="number" value={duration} onChange={e => setDuration(e.target.value)}
+                  placeholder="Other"
+                  style={{ width:'64px', padding:'8px 10px', borderRadius:'20px',
+                    background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                    color:'#f8fafc', fontSize:'13px', outline:'none', textAlign:'center' }} />
+              </div>
+            </div>
+
+            {/* Intensity */}
+            <div>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#64748b',
+                textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:'8px' }}>
+                Intensity
+              </label>
+              <div style={{ display:'flex', gap:'8px' }}>
+                {INTENSITY_OPTS.map(opt => (
+                  <button key={opt.value} onClick={() => setIntensity(opt.value)}
+                    style={{ flex:1, padding:'10px', borderRadius:'10px', border:'none',
+                      fontSize:'13px', fontWeight:'700', cursor:'pointer',
+                      background: intensity === opt.value ? `${opt.color}22` : 'rgba(255,255,255,0.04)',
+                      color: intensity === opt.value ? opt.color : '#64748b',
+                      outline: intensity === opt.value ? `1.5px solid ${opt.color}55` : '1.5px solid transparent',
+                      transition:'all 0.12s' }}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label style={{ display:'block', fontSize:'11px', fontWeight:'700', color:'#64748b',
+                textTransform:'uppercase', letterSpacing:'0.5px', marginBottom:'8px' }}>
+                Notes (optional)
+              </label>
+              <textarea value={notes} onChange={e => setNotes(e.target.value)}
+                placeholder="e.g. 5km run, felt strong…"
+                rows={2}
+                style={{ width:'100%', padding:'10px 12px', borderRadius:'10px', boxSizing:'border-box',
+                  background:'rgba(255,255,255,0.06)', border:'1px solid rgba(255,255,255,0.1)',
+                  color:'#f8fafc', fontSize:'13px', outline:'none', resize:'none', fontFamily:'inherit' }} />
+            </div>
+
+            {/* Footer buttons */}
+            <div style={{ flexShrink:0, display:'flex', gap:'10px', marginTop:'4px' }}>
+              <button onClick={() => setStep('pick')}
+                style={{ flex:1, padding:'12px', background:'rgba(255,255,255,0.05)',
+                  border:'1px solid rgba(255,255,255,0.1)', borderRadius:'12px',
+                  color:'#94a3b8', fontSize:'14px', fontWeight:'600', cursor:'pointer' }}>
+                ← Back
+              </button>
+              <button onClick={handleConfirm} disabled={!duration || saving}
+                style={{ flex:2, padding:'12px',
+                  background: (!duration || saving) ? 'rgba(249,115,22,0.4)' : '#f97316',
+                  border:'none', borderRadius:'12px', color:'#fff',
+                  fontSize:'14px', fontWeight:'700',
+                  cursor: (!duration || saving) ? 'not-allowed' : 'pointer' }}>
+                {saving ? 'Saving…' : `Save ${selected?.name}`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ActivityLog({ logs, date, onAdd }) {
+  const dayLogs = logs.filter(l => l.Status === 'Activity' && (l.Date||'').slice(0,10) === date);
+  const intensityColor = { Easy:'#22c55e', Moderate:'#f59e0b', Hard:'#ef4444' };
+
+  return (
+    <div style={{ marginBottom:'12px' }}>
+      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:'8px' }}>
+        <span style={{ fontSize:'12px', fontWeight:'700', color:'#475569',
+          textTransform:'uppercase', letterSpacing:'0.5px' }}>
+          Extra Activity
+        </span>
+        <button onClick={onAdd} style={{
+          padding:'5px 12px', background:'rgba(249,115,22,0.12)',
+          border:'1px solid rgba(249,115,22,0.3)', borderRadius:'20px',
+          color:'#f97316', fontSize:'12px', fontWeight:'700', cursor:'pointer',
+        }}>+ Log Activity</button>
+      </div>
+
+      {dayLogs.length === 0 ? (
+        <button onClick={onAdd} style={{
+          width:'100%', padding:'14px', background:'rgba(255,255,255,0.02)',
+          border:'1px dashed rgba(255,255,255,0.1)', borderRadius:'12px',
+          color:'#334155', fontSize:'13px', cursor:'pointer', textAlign:'center',
+        }}>
+          Tap to log cardio or a sport
+        </button>
+      ) : (
+        <div style={{ display:'flex', flexDirection:'column', gap:'8px' }}>
+          {dayLogs.map((log, i) => {
+            let detail = null;
+            try { const arr = JSON.parse(log.ExercisesCompleted || '[]'); detail = arr[0] || null; } catch {}
+            const icon = ALL_ACTIVITY_ITEMS.find(a => a.name === log.WorkoutName)?.icon || '🏃';
+            const col = intensityColor[detail?.intensity] || '#64748b';
+            return (
+              <div key={i} style={{
+                display:'flex', alignItems:'center', gap:'12px', padding:'11px 14px',
+                background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)',
+                borderRadius:'12px',
+              }}>
+                <span style={{ fontSize:'22px', flexShrink:0 }}>{icon}</span>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ fontSize:'14px', fontWeight:'700', color:'#f1f5f9' }}>{log.WorkoutName}</div>
+                  <div style={{ fontSize:'12px', color:'#64748b', marginTop:'2px' }}>
+                    {log.Duration ? `${log.Duration} min` : ''}
+                    {detail?.intensity && <span style={{ color:col, marginLeft: log.Duration ? 8 : 0, fontWeight:600 }}>{detail.intensity}</span>}
+                    {detail?.notes && <span style={{ color:'#475569', marginLeft:8 }}>· {detail.notes}</span>}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          <button onClick={onAdd} style={{
+            padding:'8px', background:'none', border:'1px dashed rgba(255,255,255,0.08)',
+            borderRadius:'10px', color:'#475569', fontSize:'12px', cursor:'pointer',
+          }}>+ Log another activity</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Workout session persistence ─────────────────────────────────────────────
 const WS_KEY = 'tff_active_workout';
 function loadSavedWorkout() {
@@ -1929,6 +2184,7 @@ export default function TrainingPage() {
   const [progressionItems, setProgressionItems] = useState([]);
   const [showProgression,  setShowProgression]  = useState(false);
   const [savingProgression,setSavingProgression]= useState(false);
+  const [showActivityModal,setShowActivityModal]= useState(false);
 
   const weekDays     = getWeekDays();
   const daysPerWeek  = trainingDays?.size || parseInt(activeProgram?.DaysPerWeek) || parseInt(clientProfile?.TrainingDaysPerWeek) || 3;
@@ -2348,6 +2604,28 @@ export default function TrainingPage() {
     setProgressionItems([]);
   };
 
+  const handleLogActivity = async ({ activity, duration, intensity, notes }) => {
+    const logID = `ACT_${Date.now()}`;
+    const row = {
+      LogID:      logID,
+      ClientID:   user.clientID,
+      Date:       selectedDate,
+      ProgramID:  clientProfile?.ProgramID || '',
+      PhaseIndex: '',
+      WeekNumber: '',
+      WorkoutName: activity.name,
+      ExercisesCompleted: JSON.stringify([{ type: activity.name, category: activity.category, intensity, notes }]),
+      TotalSets:  '',
+      Duration:   String(duration),
+      Status:     'Activity',
+      Notes:      notes,
+      LoggedAt:   new Date().toISOString(),
+    };
+    await appendToSheet('WorkoutLogs', row);
+    // Optimistic update
+    setWorkoutLogs(prev => [...prev, row]);
+  };
+
   // ── Sub-views ──
   if (view === 'preWorkout') {
     return (
@@ -2451,6 +2729,15 @@ export default function TrainingPage() {
         </div>
       )}
 
+      {/* Activity log */}
+      {!loading && (
+        <ActivityLog
+          logs={workoutLogs}
+          date={selectedDate}
+          onAdd={() => setShowActivityModal(true)}
+        />
+      )}
+
       {/* Program Roadmap */}
       {!loading && activePhases && activePhases.length > 0 && (
         <ProgramRoadmap
@@ -2475,6 +2762,15 @@ export default function TrainingPage() {
         <div style={{color:'#fca5a5',fontSize:'13px',textAlign:'center',marginTop:'8px'}}>
           {error} <button onClick={fetchData} style={{background:'none',border:'none',color:'#f97316',fontSize:'13px',fontWeight:'700',cursor:'pointer',padding:'0 4px'}}>Retry</button>
         </div>
+      )}
+
+      {/* Activity logger modal */}
+      {showActivityModal && (
+        <AddActivityModal
+          date={selectedDate}
+          onSave={handleLogActivity}
+          onClose={() => setShowActivityModal(false)}
+        />
       )}
 
       {/* Session picker modal — shown for rest days or to swap workout day */}
