@@ -966,6 +966,11 @@ const defaultProgramData = () => ({
 });
 
 function parsePhasesFromProgram(prog) {
+  // Already-parsed phases array (stored in state as prog.phases)
+  if (Array.isArray(prog?.phases) && prog.phases.length > 0) {
+    return prog.phases.map(migratePhaseLegacy);
+  }
+  // Raw JSON string (direct from sheet row before parsing)
   if (prog?.PhasesJSON || prog?.phasesJSON) {
     try {
       const phases = JSON.parse(prog.PhasesJSON || prog.phasesJSON);
