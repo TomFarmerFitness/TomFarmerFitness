@@ -1164,4 +1164,4 @@ function CreateProgramModal({ initial, allExercises, onClose, onSave }) {
   );
 }
 
-export { parsePhasesFromProgram, CreateProgramModal, generateId, initPhase, initPhases, totalProgramWeeks, migratePhaseLegacy };
+export { parsePhasesFromProgram, CreateProgramModal, generateId, initPhase, initPhases, totalProgramWeeks, migratePhaseLegacy, TRAINING_TYPES, EQUIPMENT_OPTIONS };

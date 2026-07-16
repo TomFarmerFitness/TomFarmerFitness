@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { readSheet, appendToSheet, upsertRow, deleteRowsWhere, invalidateCache } from '../../utils/sheets';
 import config from '../../config';
-import { CreateProgramModal, parsePhasesFromProgram, generateId, totalProgramWeeks } from '../../components/trainer/CreateProgramModal';
+import { CreateProgramModal, parsePhasesFromProgram, generateId, totalProgramWeeks, TRAINING_TYPES, EQUIPMENT_OPTIONS } from '../../components/trainer/CreateProgramModal';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -651,6 +651,8 @@ export default function ProgramLibraryPage() {
       Level: copy.level, Equipment: copy.equipment.join(', '),
       FocusAreas: copy.focusAreas.join(', '), DaysJSON: JSON.stringify(copy.days),
       PhasesJSON: copy.phases ? JSON.stringify(copy.phases) : undefined,
+      SessionDuration: copy.sessionDuration || 60,
+      TrainingType: copy.trainingType || 'Hypertrophy',
       CreatedAt: todayISO(),
     };
     await upsertRow('Programs', 'ProgramID', newId, rowData);

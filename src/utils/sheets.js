@@ -95,8 +95,10 @@ export function invalidateCache(tabName) {
 }
 
 // ─── Apps Script POST helper ──────────────────────────────────────────────────
-// Uses axios (not fetch) so that CORS preflight is handled automatically.
-// Apps Script web apps deployed as "Anyone" correctly handle OPTIONS preflights.
+// Uses native fetch WITHOUT a Content-Type header so the browser sends a "simple
+// request" — no CORS preflight (OPTIONS) is triggered. Apps Script web apps do
+// not correctly handle OPTIONS preflights, so adding Content-Type: application/json
+// (which axios does by default) causes an immediate network error.
 async function scriptPost(payload) {
   const url = config.APPS_SCRIPT_URL;
   if (!url || url.startsWith('YOUR_')) {
@@ -105,24 +107,34 @@ async function scriptPost(payload) {
       'VITE_APPS_SCRIPT_URL to your .env file.'
     );
   }
+  let res;
   try {
-    const res = await axios.post(url, payload, {
-      headers: { 'Content-Type': 'application/json' },
-      maxRedirects: 5,
+    res = await fetch(url, {
+      method: 'POST',
+      redirect: 'follow',
+      body: JSON.stringify(payload),
+      // No Content-Type — keeps this a simple request (no CORS preflight).
     });
-    const data = res.data;
-    if (!data?.success) throw new Error(data?.error || `Apps Script returned an error (${payload.action}).`);
-    return data;
-  } catch (err) {
-    if (err.response) {
-      // Server responded with a non-2xx status
-      console.error('[TFF] scriptPost server error', payload.action, err.response.status, err.response.data);
-      throw new Error(`Apps Script HTTP ${err.response.status} (${payload.action}): ${JSON.stringify(err.response.data)}`);
-    }
-    // Network / CORS error - err.message is the raw axios network message
-    console.error('[TFF] scriptPost network error', payload.action, err);
-    throw new Error(`Network error (${payload.action}): ${err.message}`);
+  } catch (networkErr) {
+    console.error('[TFF] scriptPost network error', payload.action, networkErr);
+    throw new Error(`Network error (${payload.action}): ${networkErr.message}`);
   }
+  if (!res.ok) {
+    console.error('[TFF] scriptPost HTTP error', payload.action, res.status);
+    throw new Error(`Apps Script HTTP ${res.status} (${payload.action})`);
+  }
+  let data;
+  try {
+    data = await res.json();
+  } catch (parseErr) {
+    console.error('[TFF] scriptPost JSON parse error', payload.action, parseErr);
+    throw new Error(`Apps Script returned non-JSON response (${payload.action}). Check deployment access is set to "Anyone".`);
+  }
+  if (!data?.success) {
+    console.error('[TFF] scriptPost Apps Script error', payload.action, data);
+    throw new Error(data?.error || `Apps Script returned an error (${payload.action}).`);
+  }
+  return data;
 }
 
 // ─── Write helpers ────────────────────────────────────────────────────────────
