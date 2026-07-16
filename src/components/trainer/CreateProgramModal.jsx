@@ -639,6 +639,17 @@ const TRACKED_MUSCLES = [
   { key:'Calves', label:'Calves' }, { key:'Core', label:'Core' },
 ];
 
+// Normalise generic muscle group names (used by the exercise library) to the
+// specific keys that TRACKED_MUSCLES expects. This lets the weekly-sets tracker
+// show non-zero counts even when exercises were added from the seeded library,
+// which previously stored 'Arms' for all bicep/tricep work and 'Legs' for all
+// quad/hamstring/calf work.
+const MUSCLE_ALIASES = {
+  'Arms':     ['Biceps', 'Triceps'],
+  'Legs':     ['Quads', 'Hamstrings', 'Calves'],
+  'Full Body': ['Chest', 'Back', 'Shoulders', 'Biceps', 'Triceps', 'Quads', 'Hamstrings', 'Glutes', 'Calves', 'Core'],
+};
+
 function StepExercises({ phases, onPhasesChange, allExercises }) {
   // Track which phase+session is actively being edited
   const [activeKey,     setActiveKey]    = useState({ phaseIdx: 0, sessionIdx: 0 });
@@ -653,7 +664,10 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
   const activeSession = activeSessions[activeSessionIdx] || null;
   const exercises     = activeSession?.exercises || [];
 
-  // Weekly sets: for the currently selected phase's first week schedule
+  // Weekly sets: for the currently selected phase's first week schedule.
+  // Uses MUSCLE_ALIASES to map generic library values ('Arms', 'Legs') to the
+  // specific keys TRACKED_MUSCLES displays, so the counter is never zero for
+  // bicep, tricep, quad, hamstring or calf work.
   const weeklySets = useMemo(() => {
     const counts = {};
     const firstWeek = activePhase?.weekSchedules?.[0] || [];
@@ -662,7 +676,12 @@ function StepExercises({ phases, onPhasesChange, allExercises }) {
       const sess = (activePhase?.sessionTemplates || []).find(s => s.id === sessionId);
       (sess?.exercises || []).forEach(ex => {
         const m = ex.muscleGroup || '';
-        if (m) counts[m] = (counts[m] || 0) + (parseInt(ex.sets) || 0);
+        if (!m) return;
+        const targets = MUSCLE_ALIASES[m] || [m];
+        const sets = parseInt(ex.sets) || 0;
+        targets.forEach(target => {
+          counts[target] = (counts[target] || 0) + sets;
+        });
       });
     });
     return counts;
