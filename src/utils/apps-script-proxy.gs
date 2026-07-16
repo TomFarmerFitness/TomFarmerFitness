@@ -708,4 +708,11 @@ function doGet() {
 function ok(payload) {
   return ContentService
     .createTextOutput(JSON.stringify(Object.assign({ success: true }, payload)))
-    .setMimeType(ContentService.Mim
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function error(message) {
+  return ContentService
+    .createTextOutput(JSON.stringify({ success: false, error: message }))
+    .setMimeType(ContentService.MimeType.JSON);
+}

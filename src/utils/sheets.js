@@ -95,8 +95,8 @@ export function invalidateCache(tabName) {
 }
 
 // ─── Apps Script POST helper ──────────────────────────────────────────────────
-// Uses fetch without Content-Type to avoid CORS preflight (Apps Script limitation).
-// Apps Script receives the JSON body in e.postData.contents regardless.
+// Uses axios (not fetch) so that CORS preflight is handled automatically.
+// Apps Script web apps deployed as "Anyone" correctly handle OPTIONS preflights.
 async function scriptPost(payload) {
   const url = config.APPS_SCRIPT_URL;
   if (!url || url.startsWith('YOUR_')) {
@@ -105,16 +105,24 @@ async function scriptPost(payload) {
       'VITE_APPS_SCRIPT_URL to your .env file.'
     );
   }
-  const res = await fetch(url, {
-    method: 'POST',
-    redirect: 'follow',
-    body: JSON.stringify(payload),
-    // No Content-Type header -- avoids CORS preflight for cross-origin requests
-  });
-  if (!res.ok) throw new Error(`Apps Script HTTP ${res.status}`);
-  const data = await res.json();
-  if (!data?.success) throw new Error(data?.error || 'Apps Script returned an error.');
-  return data;
+  try {
+    const res = await axios.post(url, payload, {
+      headers: { 'Content-Type': 'application/json' },
+      maxRedirects: 5,
+    });
+    const data = res.data;
+    if (!data?.success) throw new Error(data?.error || `Apps Script returned an error (${payload.action}).`);
+    return data;
+  } catch (err) {
+    if (err.response) {
+      // Server responded with a non-2xx status
+      console.error('[TFF] scriptPost server error', payload.action, err.response.status, err.response.data);
+      throw new Error(`Apps Script HTTP ${err.response.status} (${payload.action}): ${JSON.stringify(err.response.data)}`);
+    }
+    // Network / CORS error - err.message is the raw axios network message
+    console.error('[TFF] scriptPost network error', payload.action, err);
+    throw new Error(`Network error (${payload.action}): ${err.message}`);
+  }
 }
 
 // ─── Write helpers ────────────────────────────────────────────────────────────

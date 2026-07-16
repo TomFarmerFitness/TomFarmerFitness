@@ -606,6 +606,12 @@ export default function ProgramLibraryPage() {
   const handleSaveProgram = async ({ id, name, description, goal, daysPerWeek,
     durationWeeks, level, equipment, focusAreas, days, phases, sessionDuration, trainingType }) => {
     const programId = id || generateId('prog');
+
+    // Preserve the original CreatedAt when editing
+    const existingCreatedAt = id
+      ? (programs.find(p => p.id === id)?.createdAt || todayISO())
+      : todayISO();
+
     const rowData = {
       ProgramID: programId, Name: name, Description: description,
       Goal: goal, DaysPerWeek: daysPerWeek, DurationWeeks: durationWeeks,
@@ -613,10 +619,15 @@ export default function ProgramLibraryPage() {
       SessionDuration: sessionDuration || 60, TrainingType: trainingType || 'Hypertrophy',
       DaysJSON: JSON.stringify(days),
       PhasesJSON: JSON.stringify(phases || [{ id: generateId('phase'), name: 'Phase 1', order: 1, weekCount: durationWeeks, days }]),
-      CreatedAt: id ? undefined : todayISO(),
+      CreatedAt: existingCreatedAt,
     };
-    if (id) delete rowData.CreatedAt;
-    await upsertRow('Programs', 'ProgramID', programId, rowData);
+
+    // Use delete + append instead of upsert to avoid the complex merge logic
+    // in Apps Script that was causing "Failed to fetch" errors.
+    if (id) {
+      await deleteRowsWhere('Programs', 'ProgramID', programId);
+    }
+    await appendToSheet('Programs', rowData);
 
     // Optimistic update
     const newProg = { id: programId, name, description, goal, daysPerWeek,
