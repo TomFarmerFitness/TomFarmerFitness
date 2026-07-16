@@ -3,6 +3,10 @@ import { readSheet, appendToSheet, upsertRow, deleteRowsWhere, invalidateCache }
 import config from '../../config';
 import { CreateProgramModal, parsePhasesFromProgram, generateId, totalProgramWeeks } from '../../components/trainer/CreateProgramModal';
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function todayISO() { return new Date().toISOString().slice(0, 10); }
+
 // ─── Page-level constants ─────────────────────────────────────────────────────
 
 const GOAL_FILTERS = ['All', 'Weight Loss', 'Muscle Gain', 'Strength', 'General Fitness'];
